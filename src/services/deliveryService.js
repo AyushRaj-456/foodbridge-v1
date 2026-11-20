@@ -1,13 +1,20 @@
+import { runTransaction } from 'firebase/firestore';
 import {
+  db,
   doc,
-  runTransaction,
+  getDoc,
+  getDocs,
+  setDoc,
   updateDoc,
   addDoc,
   collection,
+  query,
+  where,
   serverTimestamp
-} from 'firebase/firestore';
+} from './firebase';
 import { addDeliveryPartnerToConversation, sendChatMessage } from './chatService';
 import { sendInAppNotification } from './notificationService';
+import { calculateRouteAndFare } from './routingService';
 
 export const DELIVERY_STATUSES = {
   PENDING_AGREEMENT: 'pending_agreement',
@@ -506,6 +513,18 @@ export async function transitionDeliveryStatus(db, deliveryId, targetStatus, act
           donationId: listingId
         });
         if (d.assignedPartnerId) {
+          // Release the delivery partner so they become available for subsequent requests
+          try {
+            await updateDoc(doc(db, 'deliveryPartners', d.assignedPartnerId), {
+              isAvailable: true,
+              activeDeliveryId: null,
+              currentListingId: null,
+              updatedAt: serverTimestamp()
+            });
+          } catch (relErr) {
+            console.warn('Notice releasing delivery partner availability:', relErr.message);
+          }
+
           await sendInAppNotification(db, {
             recipientId: d.assignedPartnerId,
             title: 'Delivery Job Completed!',
@@ -520,4 +539,253 @@ export async function transitionDeliveryStatus(db, deliveryId, targetStatus, act
   }
 
   return { previousStatus: txResult.previousStatus, newStatus: txResult.newStatus };
+}
+
+/**
+ * Checks regional delivery partner counts (total and currently free).
+ *
+ * @param {Object} dbInstance Firestore database
+ * @param {string} [district] Administrative region / district
+ * @returns {Promise<{ district: string, totalInRegion: number, availableCount: number, freePartners: Array }>}
+ */
+export async function getRegionPartnerAvailability(dbInstance = db, district = 'Bengaluru Urban') {
+  try {
+    const dCol = collection(dbInstance || db, 'deliveryPartners');
+    const snap = await getDocs(dCol);
+    const partners = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+
+    const target = (district || 'Bengaluru Urban').toLowerCase().trim();
+
+    const inRegion = partners.filter((p) => {
+      const pDist = (p.serviceDistrict || p.district || 'Bengaluru Urban').toLowerCase().trim();
+      return pDist === target || pDist.includes(target) || target.includes(pDist);
+    });
+
+    const freePartners = inRegion.filter((p) =>
+      p.verificationStatus === 'verified' &&
+      p.isAvailable !== false &&
+      !p.activeDeliveryId &&
+      !p.suspended
+    );
+
+    return {
+      district: district || 'Bengaluru Urban',
+      totalInRegion: inRegion.length,
+      availableCount: freePartners.length,
+      freePartners
+    };
+  } catch (err) {
+    console.warn('Error querying region partner availability:', err);
+    return {
+      district: district || 'Bengaluru Urban',
+      totalInRegion: 0,
+      availableCount: 0,
+      freePartners: []
+    };
+  }
+}
+
+/**
+ * Automatically requests and assigns a random available delivery partner in the region.
+ * Computes shortest road route and 50/50 fee split, assigns courier atomically,
+ * adds them to the 3-party chat, and updates dashboards.
+ *
+ * @param {Object} dbInstance Firestore database
+ * @param {Object} params
+ * @param {Object} params.donation Listing document
+ * @param {Object} [params.recipientProfile] Recipient organization profile
+ * @param {string} params.requestedBy 'donor' | 'recipient'
+ * @param {string} params.requesterName
+ * @returns {Promise<{
+ *   success: boolean,
+ *   reason?: string,
+ *   partner?: Object,
+ *   deliveryId?: string,
+ *   fare?: Object,
+ *   route?: Object,
+ *   totalInRegion?: number,
+ *   availableCount?: number
+ * }>}
+ */
+export async function requestAndAssignDeliveryPartner(dbInstance = db, {
+  donation,
+  recipientProfile = null,
+  requestedBy = 'recipient',
+  requesterName = 'Participant'
+}) {
+  if (!donation?.id) throw new Error('Valid donation is required');
+
+  const database = dbInstance || db;
+  const district = donation.district || recipientProfile?.district || 'Bengaluru Urban';
+
+  // 1. Calculate road route and 50/50 fare
+  const pickupLat = Number(donation.latitude) || 12.9716;
+  const pickupLon = Number(donation.longitude) || 77.5946;
+  const dropLat = Number(donation.acceptedRecipientLatitude || recipientProfile?.latitude) || 12.9740;
+  const dropLon = Number(donation.acceptedRecipientLongitude || recipientProfile?.longitude) || 77.5990;
+
+  const routeAndFare = await calculateRouteAndFare(pickupLat, pickupLon, dropLat, dropLon, donation.id);
+  const { distanceKm, durationMin, fare } = routeAndFare;
+
+  // 2. Query available delivery partners in region
+  const regionStats = await getRegionPartnerAvailability(database, district);
+
+  if (regionStats.freePartners.length === 0) {
+    return {
+      success: false,
+      reason: 'NO_PARTNERS_AVAILABLE',
+      district,
+      totalInRegion: regionStats.totalInRegion,
+      availableCount: 0,
+      fare,
+      distanceKm,
+      durationMin
+    };
+  }
+
+  // 3. Select a RANDOM available delivery partner in that region
+  const randomIndex = Math.floor(Math.random() * regionStats.freePartners.length);
+  const selectedPartner = regionStats.freePartners[randomIndex];
+  const partnerId = selectedPartner.userId || selectedPartner.id;
+  const partnerName = selectedPartner.fullName || selectedPartner.organizationName || 'Verified Courier';
+  const partnerPhone = selectedPartner.phone || '';
+
+  // 4. Create Delivery Request document
+  const deliveryData = {
+    listingId: donation.id,
+    listingTitle: donation.title,
+    donorId: donation.donorId,
+    donorName: donation.donorName || 'Food Donor',
+    donorPhone: donation.contactPhone || donation.donorPhone || '',
+    recipientId: donation.acceptedRecipientId || recipientProfile?.userId || '',
+    recipientName: donation.acceptedRecipientName || recipientProfile?.organizationName || 'Verified Organization',
+    recipientPhone: donation.acceptedRecipientPhone || recipientProfile?.phone || '',
+    pickupAddress: donation.address,
+    pickupDistrict: donation.district || district,
+    pickupLatitude: pickupLat,
+    pickupLongitude: pickupLon,
+    dropoffAddress: donation.acceptedRecipientAddress || recipientProfile?.address || 'Recipient Organization Facility',
+    dropoffDistrict: district,
+    dropoffLatitude: dropLat,
+    dropoffLongitude: dropLon,
+    quantity: donation.quantity,
+    unit: donation.unit,
+    storageCondition: donation.storageCondition || 'ambient',
+    safeUseDeadline: donation.safeUseDeadline || null,
+    totalAmount: fare.totalFare,
+    donorContribution: fare.donorShare,
+    recipientContribution: fare.recipientShare,
+    paymentStatus: 'pending', // Marks 50/50 fee split as payable/pending
+    approxDistanceKm: distanceKm,
+    estimatedDurationMin: durationMin,
+    routeData: routeAndFare,
+    status: DELIVERY_STATUSES.ASSIGNED,
+    assignedPartnerId: partnerId,
+    assignedPartnerName: partnerName,
+    assignedPartnerPhone: partnerPhone,
+    transportMode: selectedPartner.transportMode || 'two_wheeler',
+    assignedAt: serverTimestamp(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  const deliveryRef = await addDoc(collection(database, 'deliveries'), deliveryData);
+
+  // 5. Mark partner as occupied/active
+  try {
+    await updateDoc(doc(database, 'deliveryPartners', partnerId), {
+      isAvailable: false,
+      activeDeliveryId: deliveryRef.id,
+      currentListingId: donation.id,
+      updatedAt: serverTimestamp()
+    });
+  } catch (partErr) {
+    console.warn('Notice updating partner occupied status:', partErr.message);
+  }
+
+  // 6. Update listing record
+  try {
+    const listRef = doc(database, 'listings', donation.id);
+    await updateDoc(listRef, {
+      deliveryMode: 'delivery_partner',
+      deliveryId: deliveryRef.id,
+      deliveryPartnerId: partnerId,
+      deliveryPartnerName: partnerName,
+      deliveryPartnerPhone: partnerPhone,
+      deliveryFare: fare.totalFare,
+      deliveryDonorShare: fare.donorShare,
+      deliveryRecipientShare: fare.recipientShare,
+      routeData: routeAndFare,
+      status: 'in_transit',
+      updatedAt: serverTimestamp()
+    });
+  } catch (listErr) {
+    console.warn('Notice updating listing delivery info:', listErr.message);
+  }
+
+  // 7. Add Delivery Partner to the SAME conversation
+  try {
+    await addDeliveryPartnerToConversation(database, donation.id, {
+      partnerId,
+      partnerName,
+      phone: partnerPhone
+    });
+  } catch (chatErr) {
+    console.warn('Notice adding partner to chat:', chatErr.message);
+  }
+
+  // 8. Post system announcement message with route & 50/50 fare details
+  try {
+    await sendChatMessage(database, donation.id, {
+      senderId: 'system',
+      senderName: 'FoodBridge Platform',
+      senderRole: 'system',
+      text: `Delivery partner requested by ${requestedBy === 'donor' ? 'Donor' : 'Recipient'}. Shortest route: ${distanceKm} km (~${durationMin} mins). Total delivery fee: ₹${fare.totalFare} (50% Donor: ₹${fare.donorShare} • 50% Recipient: ₹${fare.recipientShare}).`,
+      isSystemMessage: true
+    });
+  } catch (msgErr) {}
+
+  // 9. Send in-app notifications to all 3 parties
+  const notifPayload = {
+    title: 'Delivery Partner Assigned',
+    body: `${partnerName} assigned for '${donation.title}' (Fare: ₹${fare.totalFare}, 50/50 split).`,
+    type: 'delivery',
+    donationId: donation.id
+  };
+
+  try {
+    if (donation.donorId) {
+      await sendInAppNotification(database, {
+        recipientId: donation.donorId,
+        link: '/donor/dashboard',
+        ...notifPayload
+      });
+    }
+    const recipId = donation.acceptedRecipientId || recipientProfile?.userId;
+    if (recipId) {
+      await sendInAppNotification(database, {
+        recipientId: recipId,
+        link: '/recipient/dashboard',
+        ...notifPayload
+      });
+    }
+    await sendInAppNotification(database, {
+      recipientId: partnerId,
+      title: 'New Delivery Transport Assignment',
+      body: `You have been assigned to deliver '${donation.title}' from ${donation.address}.`,
+      link: '/delivery/dashboard',
+      type: 'delivery',
+      donationId: donation.id
+    });
+  } catch (notifErr) {}
+
+  return {
+    success: true,
+    partner: selectedPartner,
+    deliveryId: deliveryRef.id,
+    fare,
+    route: routeAndFare,
+    distanceKm,
+    durationMin
+  };
 }

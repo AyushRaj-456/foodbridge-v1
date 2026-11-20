@@ -26,6 +26,7 @@ import { Badge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Input } from '../../components/common/Input';
 import { DonationChatModal } from '../../components/chat/DonationChatModal';
+import { DeliveryRouteModal } from '../../components/map/DeliveryRouteModal';
 import {
   Utensils,
   Plus,
@@ -43,7 +44,8 @@ import {
   Scale,
   Phone,
   PackageCheck,
-  MessageSquare
+  MessageSquare,
+  Navigation
 } from 'lucide-react';
 
 export function DonorDashboardPage() {
@@ -74,6 +76,7 @@ export function DonorDashboardPage() {
 
   // Modals
   const [chatModalListing, setChatModalListing] = useState(null);
+  const [mapModalListing, setMapModalListing] = useState(null);
   const [detailsModal, setDetailsModal] = useState(null); // listing object
   const [cancelModal, setCancelModal] = useState(null); // listing object
   const [cancelReason, setCancelReason] = useState('');
@@ -106,7 +109,7 @@ export function DonorDashboardPage() {
         if (typeof window !== 'undefined' && window.sessionStorage) {
           window.sessionStorage.setItem(`foodbridge_donor_listings_${user.uid}`, JSON.stringify(items));
         }
-      } catch (e) {}
+      } catch (e) { }
 
       // Fetch linked delivery documents in parallel with deduplication
       const uniqueDeliveryIds = [...new Set(items.map((i) => i.deliveryId).filter(Boolean))];
@@ -325,11 +328,10 @@ export function DonorDashboardPage() {
         <button
           type="button"
           onClick={() => setActiveTab('active')}
-          className={`px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors ${
-            activeTab === 'active'
-              ? 'border-brand-800 text-brand-900'
-              : 'border-transparent text-stone-500 hover:text-stone-800'
-          }`}
+          className={`px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors ${activeTab === 'active'
+            ? 'border-brand-800 text-brand-900'
+            : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
         >
           <span>Active Listings</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
@@ -340,11 +342,10 @@ export function DonorDashboardPage() {
         <button
           type="button"
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors ${
-            activeTab === 'history'
-              ? 'border-brand-800 text-brand-900'
-              : 'border-transparent text-stone-500 hover:text-stone-800'
-          }`}
+          className={`px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors ${activeTab === 'history'
+            ? 'border-brand-800 text-brand-900'
+            : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
         >
           <span>Donation History</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
@@ -385,13 +386,12 @@ export function DonorDashboardPage() {
                         <h3 className="font-bold text-stone-900 text-lg">
                           {listing.title}
                         </h3>
-                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
-                          listing.status === 'matching'
-                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                            : listing.status === 'accepted'
+                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${listing.status === 'matching'
+                          ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                          : listing.status === 'accepted'
                             ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
                             : 'bg-sky-100 text-sky-900 border border-sky-200'
-                        }`}>
+                          }`}>
                           {listing.status === 'matching' ? 'Matching Candidates' : listing.status.toUpperCase()}
                         </span>
                       </div>
@@ -477,6 +477,14 @@ export function DonorDashboardPage() {
                             <MessageSquare className="w-3.5 h-3.5 mr-1" />
                             <span>Chat</span>
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setMapModalListing(listing)}
+                          >
+                            <Navigation className="w-3.5 h-3.5 mr-1" />
+                            <span>Open Map</span>
+                          </Button>
                           <span className="font-semibold text-emerald-800 text-[11px] px-2 py-0.5 rounded bg-emerald-100">
                             {listing.deliveryMode === 'delivery_partner' ? 'Delivery Partner Transport' : 'Direct Recipient Pickup'}
                           </span>
@@ -513,13 +521,12 @@ export function DonorDashboardPage() {
                               <div className="flex items-center gap-2">
                                 <Truck className="w-4 h-4 text-stone-700" />
                                 <span className="font-semibold text-stone-900">Delivery Partner Request</span>
-                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                                  del.status === DELIVERY_STATUSES.ASSIGNED || del.status === DELIVERY_STATUSES.PICKED_UP
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : del.status === DELIVERY_STATUSES.REQUESTED
+                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${del.status === DELIVERY_STATUSES.ASSIGNED || del.status === DELIVERY_STATUSES.PICKED_UP
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : del.status === DELIVERY_STATUSES.REQUESTED
                                     ? 'bg-amber-100 text-amber-800'
                                     : 'bg-stone-200 text-stone-700'
-                                }`}>
+                                  }`}>
                                   {del.status.replace(/_/g, ' ')}
                                 </span>
                               </div>
@@ -634,14 +641,24 @@ export function DonorDashboardPage() {
 
                   <div className="flex items-center gap-3">
                     {item.acceptedRecipientId && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setChatModalListing(item)}
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 mr-1" />
-                        Chat & Log
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setChatModalListing(item)}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                          Chat & Log
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setMapModalListing(item)}
+                        >
+                          <Navigation className="w-3.5 h-3.5 mr-1" />
+                          Open Map
+                        </Button>
+                      </>
                     )}
                     <div className="text-right text-stone-500 font-mono text-[11px]">
                       {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : 'Previous'}
@@ -733,6 +750,14 @@ export function DonorDashboardPage() {
           donation={chatModalListing}
           onClose={() => setChatModalListing(null)}
           onDeliveryUpdated={() => fetchListings(true)}
+        />
+      )}
+
+      {/* Interactive Delivery Route Map */}
+      {mapModalListing && (
+        <DeliveryRouteModal
+          donation={mapModalListing}
+          onClose={() => setMapModalListing(null)}
         />
       )}
     </div>

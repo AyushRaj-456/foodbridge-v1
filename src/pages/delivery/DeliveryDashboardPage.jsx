@@ -23,6 +23,7 @@ import { Badge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Input } from '../../components/common/Input';
 import { DonationChatModal } from '../../components/chat/DonationChatModal';
+import { DeliveryRouteModal } from '../../components/map/DeliveryRouteModal';
 import {
   Truck,
   CheckCircle2,
@@ -49,6 +50,7 @@ export function DeliveryDashboardPage() {
   const [activeDelivery, setActiveDelivery] = useState(null);
   const [deliveryHistory, setDeliveryHistory] = useState([]);
   const [chatModalDelivery, setChatModalDelivery] = useState(null);
+  const [mapModalDelivery, setMapModalDelivery] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState('');
@@ -418,6 +420,29 @@ export function DeliveryDashboardPage() {
 
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() => setMapModalDelivery({
+                      id: activeDelivery.listingId,
+                      listingId: activeDelivery.listingId,
+                      title: activeDelivery.listingTitle,
+                      donorName: activeDelivery.donorName,
+                      acceptedRecipientName: activeDelivery.recipientName,
+                      latitude: activeDelivery.pickupLatitude,
+                      longitude: activeDelivery.pickupLongitude,
+                      dropoffLatitude: activeDelivery.dropoffLatitude,
+                      dropoffLongitude: activeDelivery.dropoffLongitude,
+                      address: activeDelivery.pickupAddress,
+                      pickupAddress: activeDelivery.pickupAddress,
+                      dropoffAddress: activeDelivery.dropoffAddress,
+                      ...activeDelivery
+                    })}
+                  >
+                    <Navigation className="w-4 h-4 mr-1.5" />
+                    <span>Open Route Map</span>
+                  </Button>
+
+                  <Button
                     variant="secondary"
                     size="md"
                     onClick={() => setChatModalDelivery({
@@ -559,7 +584,29 @@ export function DeliveryDashboardPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setMapModalDelivery({
+                        id: d.listingId,
+                        listingId: d.listingId,
+                        title: d.listingTitle,
+                        donorName: d.donorName,
+                        acceptedRecipientName: d.recipientName,
+                        latitude: d.pickupLatitude,
+                        longitude: d.pickupLongitude,
+                        dropoffLatitude: d.dropoffLatitude,
+                        dropoffLongitude: d.dropoffLongitude,
+                        address: d.pickupAddress,
+                        pickupAddress: d.pickupAddress,
+                        dropoffAddress: d.dropoffAddress,
+                        ...d
+                      })}
+                    >
+                      <Navigation className="w-3.5 h-3.5 mr-1" />
+                      Route Map
+                    </Button>
                     <Button
                       size="sm"
                       variant="secondary"
@@ -637,6 +684,14 @@ export function DeliveryDashboardPage() {
           donation={chatModalDelivery}
           onClose={() => setChatModalDelivery(null)}
           onDeliveryUpdated={fetchDeliveries}
+        />
+      )}
+
+      {/* Interactive Delivery Route Map */}
+      {mapModalDelivery && (
+        <DeliveryRouteModal
+          donation={mapModalDelivery}
+          onClose={() => setMapModalDelivery(null)}
         />
       )}
     </div>

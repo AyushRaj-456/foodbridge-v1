@@ -92,13 +92,14 @@ service cloud.firestore {
         request.resource.data.verificationStatus == 'pending' &&
         request.resource.data.get('suspended', false) == false;
 
-      // On update by owner: cannot modify verification status or suspension
-      allow update: if isOwner(partnerId) &&
+      // On update: cannot modify verification status or suspension unless admin
+      allow update: if isAuthenticated() && (
         request.resource.data.verificationStatus == resource.data.verificationStatus &&
         request.resource.data.get('suspended', false) == resource.data.get('suspended', false) &&
         request.resource.data.get('verifiedAt', null) == resource.data.get('verifiedAt', null) &&
         request.resource.data.get('verifiedBy', null) == resource.data.get('verifiedBy', null) ||
-        isAdmin();
+        isAdmin()
+      );
 
       allow delete: if isAdmin();
     }

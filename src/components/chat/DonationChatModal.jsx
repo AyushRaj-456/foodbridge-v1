@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
+  getOrCreateConversation,
   subscribeToMessages,
   subscribeToConversation,
   sendChatMessage
 } from '../../services/chatService';
-import { confirmDeliveryAgreement } from '../../services/deliveryService';
+import {
+  confirmDeliveryAgreement,
+  getRegionPartnerAvailability,
+  requestAndAssignDeliveryPartner
+} from '../../services/deliveryService';
+import { DeliveryRouteModal } from '../map/DeliveryRouteModal';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import {
@@ -18,7 +24,10 @@ import {
   CheckCircle2,
   Clock,
   ShieldCheck,
-  Phone
+  Phone,
+  Navigation,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 
 export function DonationChatModal({
@@ -31,19 +40,50 @@ export function DonationChatModal({
   const [conversation, setConversation] = useState(null);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(true);
   const [confirmingDelivery, setConfirmingDelivery] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
+
+  // Feature 2: Delivery Partner Request inside chat
+  const [regionStats, setRegionStats] = useState(null);
+  const [requestingPartner, setRequestingPartner] = useState(false);
+  const [partnerRequestNotice, setPartnerRequestNotice] = useState('');
+  const [partnerRequestError, setPartnerRequestError] = useState('');
+  const [errorNotice, setErrorNotice] = useState('');
+
   const messagesEndRef = useRef(null);
 
-  const donationId = donation?.id || donation?.donationId;
+  const donationId = donation?.id || donation?.donationId || donation?.listingId;
 
-  // Real-time messages listener
+  // 1. Ensure conversation exists & subscribe to real-time updates
   useEffect(() => {
     if (!donationId) return;
 
-    const unsubMessages = subscribeToMessages(undefined, donationId, (msgs) => {
-      setMessages(msgs);
-    });
+    // Ensure conversation document is initialized in Firestore
+    getOrCreateConversation(undefined, {
+      donationId,
+      donationTitle: donation?.title || donation?.listingTitle,
+      donorId: donation?.donorId,
+      donorName: donation?.donorName,
+      recipientId: donation?.acceptedRecipientId || donation?.recipientId,
+      recipientName: donation?.acceptedRecipientName || donation?.recipientName
+    }).catch((err) => console.warn('Ensure conversation exists notice:', err.message));
 
+    // Subscribe to messages in real time
+    const unsubMessages = subscribeToMessages(
+      undefined,
+      donationId,
+      (msgs) => {
+        setMessages(msgs);
+        setLoadingMessages(false);
+      },
+      (err) => {
+        console.warn('Real-time messages listener notice:', err);
+        setLoadingMessages(false);
+      }
+    );
+
+    // Subscribe to conversation metadata
     const unsubConv = subscribeToConversation(undefined, donationId, (conv) => {
       setConversation(conv);
     });
@@ -52,7 +92,22 @@ export function DonationChatModal({
       unsubMessages();
       unsubConv();
     };
-  }, [donationId]);
+  }, [donationId, donation]);
+
+  // 2. Fetch regional delivery partner stats
+  const fetchPartnerStats = async () => {
+    const district = donation?.district || profileData?.district || 'Bengaluru Urban';
+    try {
+      const stats = await getRegionPartnerAvailability(undefined, district);
+      setRegionStats(stats);
+    } catch (err) {
+      console.warn('Fetch partner stats notice:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPartnerStats();
+  }, [donation?.district]);
 
   // Scroll to bottom whenever messages update
   useEffect(() => {
@@ -61,23 +116,38 @@ export function DonationChatModal({
     }
   }, [messages]);
 
+  // Handle Send Message (with instant optimistic rendering)
   const handleSendMessage = async (e) => {
     e?.preventDefault();
     if (!inputText.trim() || sending || !user) return;
 
     const text = inputText.trim();
+    const activeRole = donation?.donorId === user.uid
+      ? 'donor'
+      : donation?.acceptedRecipientId === user.uid
+      ? 'recipient'
+      : 'delivery';
+
+    const senderName = profileData?.organizationName || profileData?.fullName || user.email?.split('@')[0] || 'User';
+
+    // Optimistic message update for instant 0ms feedback
+    const optimisticMsg = {
+      id: 'opt_' + Date.now(),
+      senderId: user.uid,
+      senderName,
+      senderRole: activeRole,
+      text,
+      timestamp: { seconds: Math.floor(Date.now() / 1000) },
+      isSystemMessage: false,
+      isOptimistic: true
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
     setInputText('');
     setSending(true);
+    setErrorNotice('');
 
     try {
-      const activeRole = donation.donorId === user.uid
-        ? 'donor'
-        : donation.acceptedRecipientId === user.uid
-        ? 'recipient'
-        : 'delivery';
-
-      const senderName = profileData?.organizationName || profileData?.fullName || user.email?.split('@')[0] || 'User';
-
       await sendChatMessage(undefined, donationId, {
         senderId: user.uid,
         senderName,
@@ -86,8 +156,50 @@ export function DonationChatModal({
       });
     } catch (err) {
       console.error('Error sending message:', err);
+      setErrorNotice('Message could not be delivered. Please check your connection.');
+      // Restore input text
+      setInputText(text);
+      // Remove failed optimistic message
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
     } finally {
       setSending(false);
+    }
+  };
+
+  // Feature 2: Trigger Delivery Partner Request & Auto-Assignment
+  const handleRequestPartner = async () => {
+    if (requestingPartner || !user) return;
+    try {
+      setRequestingPartner(true);
+      setPartnerRequestError('');
+      setPartnerRequestNotice('');
+
+      const activeRole = donation?.donorId === user.uid ? 'donor' : 'recipient';
+      const requesterName = profileData?.organizationName || profileData?.fullName || 'Participant';
+
+      const result = await requestAndAssignDeliveryPartner(undefined, {
+        donation,
+        recipientProfile: profileData,
+        requestedBy: activeRole,
+        requesterName
+      });
+
+      if (result.success) {
+        setPartnerRequestNotice(
+          `Delivery partner ${result.partner?.fullName || 'Courier'} assigned! Total fee: ₹${result.fare?.totalFare} (₹${result.fare?.donorShare} Donor / ₹${result.fare?.recipientShare} Recipient).`
+        );
+        fetchPartnerStats();
+        if (onDeliveryUpdated) onDeliveryUpdated();
+      } else {
+        setPartnerRequestError(
+          `No delivery partner available right now in ${result.district || 'this region'}. You can retry in a moment.`
+        );
+      }
+    } catch (err) {
+      console.error('Delivery partner request error:', err);
+      setPartnerRequestError(err.message || 'Failed to request delivery partner.');
+    } finally {
+      setRequestingPartner(false);
     }
   };
 
@@ -95,7 +207,7 @@ export function DonationChatModal({
     if (confirmingDelivery || !user) return;
     setConfirmingDelivery(true);
     try {
-      const partyRole = donation.donorId === user.uid ? 'donor' : 'recipient';
+      const partyRole = donation?.donorId === user.uid ? 'donor' : 'recipient';
       await confirmDeliveryAgreement(undefined, deliveryId, partyRole);
       if (onDeliveryUpdated) onDeliveryUpdated();
     } catch (err) {
@@ -113,178 +225,279 @@ export function DonationChatModal({
 
   const isDonor = donation?.donorId === user?.uid;
   const isRecipient = donation?.acceptedRecipientId === user?.uid;
-  const isDelivery = donation?.deliveryPartnerId === user?.uid;
+  const isDelivery = donation?.deliveryPartnerId === user?.uid || conversation?.deliveryPartnerId === user?.uid;
 
   const currentRole = isDonor ? 'donor' : isRecipient ? 'recipient' : 'delivery';
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in"
-    >
-      <div className="bg-white rounded-2xl border border-stone-200 max-w-2xl w-full h-[88vh] max-h-[700px] flex flex-col shadow-2xl overflow-hidden">
-        {/* Chat Header */}
-        <div className="p-4 border-b border-border bg-surface-muted/50 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-brand-800 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-              <MessageSquare className="w-5 h-5 text-brand-100" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-stone-900 text-sm sm:text-base truncate">
-                  {donation?.title || conversation?.donationTitle || 'Donation Coordination'}
-                </h3>
-                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                  {(donation?.status || 'Active').replace(/_/g, ' ')}
-                </span>
-              </div>
+  // Check if a courier has already been assigned
+  const hasCourier = Boolean(
+    donation?.deliveryPartnerId ||
+    conversation?.deliveryPartnerId ||
+    donation?.deliveryMode === 'delivery_partner'
+  );
 
-              {/* Participant Badges */}
-              <div className="flex items-center gap-2 text-[11px] text-stone-500 mt-0.5 truncate">
-                <span className="flex items-center gap-1">
-                  <Utensils className="w-3 h-3 text-stone-400" />
-                  Donor: <strong className="text-stone-700">{donation?.donorName || conversation?.donorName}</strong>
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <Building2 className="w-3 h-3 text-stone-400" />
-                  NGO: <strong className="text-stone-700">{donation?.acceptedRecipientName || conversation?.recipientName}</strong>
-                </span>
-                {conversation?.deliveryPartnerName && (
-                  <>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Truck className="w-3 h-3 text-blue-600" />
-                      Courier: <strong className="text-blue-700">{conversation.deliveryPartnerName}</strong>
-                    </span>
-                  </>
-                )}
+  return (
+    <>
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in"
+      >
+        <div className="bg-white rounded-2xl border border-stone-200 max-w-2xl w-full h-[88vh] max-h-[700px] flex flex-col shadow-2xl overflow-hidden">
+          {/* Chat Header */}
+          <div className="p-4 border-b border-border bg-surface-muted/50 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-brand-800 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                <MessageSquare className="w-5 h-5 text-brand-100" />
               </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-stone-900 text-sm sm:text-base truncate">
+                    {donation?.title || donation?.listingTitle || conversation?.donationTitle || 'Donation Coordination'}
+                  </h3>
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    {(donation?.status || 'Active').replace(/_/g, ' ')}
+                  </span>
+                </div>
+
+                {/* Participant Badges */}
+                <div className="flex items-center gap-2 text-[11px] text-stone-500 mt-0.5 truncate">
+                  <span className="flex items-center gap-1">
+                    <Utensils className="w-3 h-3 text-stone-400" />
+                    Donor: <strong className="text-stone-700">{donation?.donorName || conversation?.donorName}</strong>
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <Building2 className="w-3 h-3 text-stone-400" />
+                    NGO: <strong className="text-stone-700">{donation?.acceptedRecipientName || conversation?.recipientName}</strong>
+                  </span>
+                  {(conversation?.deliveryPartnerName || donation?.deliveryPartnerName) && (
+                    <>
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <Truck className="w-3 h-3 text-blue-600" />
+                        Courier: <strong className="text-blue-700">{conversation?.deliveryPartnerName || donation?.deliveryPartnerName}</strong>
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowMapModal(true)}
+                className="hidden sm:inline-flex"
+              >
+                <Navigation className="w-3.5 h-3.5 mr-1" />
+                <span>Open Map</span>
+              </Button>
+
+              <button
+                onClick={onClose}
+                className="text-stone-400 hover:text-stone-700 p-1.5 rounded-lg transition-colors"
+                aria-label="Close Chat"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="text-stone-400 hover:text-stone-700 p-1.5 rounded-lg transition-colors"
-            aria-label="Close Chat"
-          >
-            <XCircle className="w-6 h-6" />
-          </button>
-        </div>
-
-        {/* Messages Stream */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#faf9f6]/60">
-          {messages.length === 0 ? (
-            <div className="py-20 text-center text-stone-400 text-xs">
-              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p>No messages yet. Send a message to coordinate pickup or delivery.</p>
-            </div>
-          ) : (
-            messages.map((msg) => {
-              // System Message Rendering
-              if (msg.isSystemMessage || msg.senderRole === 'system') {
-                const isProposal = msg.meta?.type === 'delivery_proposal';
-                return (
-                  <div key={msg.id} className="flex flex-col items-center my-2 space-y-1.5">
-                    <div className="px-3 py-1.5 rounded-full bg-stone-100 border border-stone-200 text-stone-600 text-[11px] text-center max-w-md shadow-xs">
-                      {msg.text}
-                    </div>
-
-                    {/* Interactive proposal confirmation button inside chat */}
-                    {isProposal && msg.meta?.deliveryId && (
-                      <div className="p-3 bg-brand-50 border border-brand-200 rounded-xl text-center max-w-sm space-y-2">
-                        <span className="text-xs font-semibold text-brand-900 block">
-                          Agreed 50/50 Cost Split: ₹{msg.meta.totalAmount}
-                        </span>
-                        <p className="text-[11px] text-stone-600">
-                          Donor share: ₹{msg.meta.donorContribution} • Recipient share: ₹{msg.meta.recipientContribution}
-                        </p>
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          onClick={() => handleConfirmSplitInChat(msg.meta.deliveryId)}
-                          loading={confirmingDelivery}
-                        >
-                          Confirm My Share (₹{currentRole === 'donor' ? msg.meta.donorContribution : msg.meta.recipientContribution})
-                        </Button>
-                      </div>
+          {/* Feature 2: Delivery Partner Request Banner inside Chat (visible to both Donor & Recipient if no courier yet) */}
+          {!hasCourier && (isDonor || isRecipient) && (
+            <div className="p-3 bg-stone-50 border-b border-stone-200 text-xs space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-stone-900 flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5 text-brand-800" />
+                      Need a Delivery Partner?
+                    </span>
+                    {regionStats && (
+                      <span className="px-2 py-0.5 rounded-full bg-brand-50 border border-brand-200 text-[10px] font-semibold text-brand-900">
+                        {regionStats.totalInRegion} in {regionStats.district}, {regionStats.availableCount} available
+                      </span>
                     )}
                   </div>
-                );
-              }
+                  <p className="text-[11px] text-stone-500">
+                    Delivery fee is split 50% Donor / 50% Recipient based on shortest road distance.
+                  </p>
+                </div>
 
-              // Normal User Message Rendering
-              const isMine = msg.senderId === user?.uid;
-              const roleBadgeColor = msg.senderRole === 'donor'
-                ? 'bg-amber-100 text-amber-800'
-                : msg.senderRole === 'recipient'
-                ? 'bg-emerald-100 text-emerald-800'
-                : 'bg-blue-100 text-blue-800';
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handleRequestPartner}
+                    loading={requestingPartner}
+                  >
+                    <Truck className="w-3.5 h-3.5 mr-1" />
+                    <span>Request Delivery Partner</span>
+                  </Button>
+                </div>
+              </div>
 
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
-                >
-                  {!isMine && (
-                    <div className="flex items-center gap-1.5 mb-1 px-1">
-                      <span className="text-[11px] font-bold text-stone-700">
-                        {msg.senderName}
-                      </span>
-                      <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${roleBadgeColor}`}>
-                        {msg.senderRole}
+              {partnerRequestNotice && (
+                <div className="p-2 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-200 text-[11px] flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  <span>{partnerRequestNotice}</span>
+                </div>
+              )}
+
+              {partnerRequestError && (
+                <div className="p-2 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 text-[11px] flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                    {partnerRequestError}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRequestPartner}
+                    className="font-bold underline text-amber-900 hover:text-amber-950"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {errorNotice && (
+            <div className="p-2.5 bg-red-50 text-red-800 border-b border-red-200 text-xs flex items-center justify-between">
+              <span>{errorNotice}</span>
+              <button onClick={() => setErrorNotice('')} className="font-bold text-red-900">Dismiss</button>
+            </div>
+          )}
+
+          {/* Messages Stream */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#faf9f6]/60">
+            {loadingMessages && messages.length === 0 ? (
+              <div className="py-20 text-center text-stone-400 text-xs flex flex-col items-center gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin opacity-50" />
+                <span>Loading conversation & history...</span>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="py-20 text-center text-stone-400 text-xs">
+                <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p>No messages yet. Send a message to coordinate pickup or delivery.</p>
+              </div>
+            ) : (
+              messages.map((msg) => {
+                // System Message Rendering
+                if (msg.isSystemMessage || msg.senderRole === 'system') {
+                  const isProposal = msg.meta?.type === 'delivery_proposal';
+                  return (
+                    <div key={msg.id} className="flex flex-col items-center my-2 space-y-1.5">
+                      <div className="px-3.5 py-1.5 rounded-full bg-stone-100 border border-stone-200 text-stone-600 text-[11px] text-center max-w-md shadow-xs leading-relaxed">
+                        {msg.text}
+                      </div>
+
+                      {/* Interactive proposal confirmation button inside chat */}
+                      {isProposal && msg.meta?.deliveryId && (
+                        <div className="p-3 bg-brand-50 border border-brand-200 rounded-xl text-center max-w-sm space-y-2">
+                          <span className="text-xs font-semibold text-brand-900 block">
+                            Agreed 50/50 Cost Split: ₹{msg.meta.totalAmount}
+                          </span>
+                          <p className="text-[11px] text-stone-600">
+                            Donor share: ₹{msg.meta.donorContribution} • Recipient share: ₹{msg.meta.recipientContribution}
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => handleConfirmSplitInChat(msg.meta.deliveryId)}
+                            loading={confirmingDelivery}
+                          >
+                            Confirm My Share (₹{currentRole === 'donor' ? msg.meta.donorContribution : msg.meta.recipientContribution})
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Normal User Message Rendering
+                const isMine = msg.senderId === user?.uid;
+                const roleBadgeColor = msg.senderRole === 'donor'
+                  ? 'bg-amber-100 text-amber-800'
+                  : msg.senderRole === 'recipient'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-blue-100 text-blue-800';
+
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+                  >
+                    {!isMine && (
+                      <div className="flex items-center gap-1.5 mb-1 px-1">
+                        <span className="text-[11px] font-bold text-stone-700">
+                          {msg.senderName}
+                        </span>
+                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${roleBadgeColor}`}>
+                          {msg.senderRole}
+                        </span>
+                      </div>
+                    )}
+
+                    <div
+                      className={`max-w-[82%] sm:max-w-[70%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-xs ${
+                        isMine
+                          ? 'bg-brand-800 text-white rounded-br-xs'
+                          : 'bg-white text-stone-800 border border-stone-200 rounded-bl-xs'
+                      } ${msg.isOptimistic ? 'opacity-70' : ''}`}
+                    >
+                      <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                      <span
+                        className={`block text-[10px] text-right mt-1 font-mono ${
+                          isMine ? 'text-brand-200' : 'text-stone-400'
+                        }`}
+                      >
+                        {formatMessageTime(msg.timestamp)}
+                        {msg.isOptimistic && ' • Sending...'}
                       </span>
                     </div>
-                  )}
-
-                  <div
-                    className={`max-w-[82%] sm:max-w-[70%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-xs ${
-                      isMine
-                        ? 'bg-brand-800 text-white rounded-br-xs'
-                        : 'bg-white text-stone-800 border border-stone-200 rounded-bl-xs'
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-                    <span
-                      className={`block text-[10px] text-right mt-1 font-mono ${
-                        isMine ? 'text-brand-200' : 'text-stone-400'
-                      }`}
-                    >
-                      {formatMessageTime(msg.timestamp)}
-                    </span>
                   </div>
-                </div>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
 
-        {/* Input Bar */}
-        <form
-          onSubmit={handleSendMessage}
-          className="p-3 border-t border-border bg-white flex items-center gap-2"
-        >
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Type a message to coordinate pickup or delivery..."
-            className="flex-1 px-4 py-2.5 rounded-xl border border-stone-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-700"
-            disabled={sending}
-          />
-          <Button
-            type="submit"
-            variant="primary"
-            size="md"
-            disabled={!inputText.trim() || sending}
-            loading={sending}
+          {/* Input Bar */}
+          <form
+            onSubmit={handleSendMessage}
+            className="p-3 border-t border-border bg-white flex items-center gap-2"
           >
-            <Send className="w-4 h-4" />
-          </Button>
-        </form>
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Type a message to coordinate pickup or delivery..."
+              className="flex-1 px-4 py-2.5 rounded-xl border border-stone-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-700"
+              disabled={sending}
+            />
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              disabled={!inputText.trim() || sending}
+              loading={sending}
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </form>
+        </div>
       </div>
-    </div>
+
+      {/* Embedded Route Map Modal */}
+      {showMapModal && (
+        <DeliveryRouteModal
+          donation={donation}
+          onClose={() => setShowMapModal(false)}
+        />
+      )}
+    </>
   );
 }

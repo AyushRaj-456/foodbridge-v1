@@ -36,6 +36,7 @@ import { Badge } from '../../components/common/Badge';
 import { Input } from '../../components/common/Input';
 import { EmptyState } from '../../components/common/EmptyState';
 import { DonationChatModal } from '../../components/chat/DonationChatModal';
+import { DeliveryRouteModal } from '../../components/map/DeliveryRouteModal';
 import {
   Building2,
   CheckCircle2,
@@ -55,7 +56,8 @@ import {
   PlayCircle,
   PackageCheck,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  Navigation
 } from 'lucide-react';
 
 export function RecipientDashboardPage() {
@@ -99,6 +101,7 @@ export function RecipientDashboardPage() {
 
   // Modals
   const [inspectModal, setInspectModal] = useState(null); // listing object
+  const [mapModalListing, setMapModalListing] = useState(null); // listing object
 
   // Delivery Request Modal
   const [deliveryModal, setDeliveryModal] = useState(null); // listing object
@@ -759,6 +762,15 @@ export function RecipientDashboardPage() {
 
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => setMapModalListing(listing)}
+                      >
+                        <Navigation className="w-3.5 h-3.5 mr-1" />
+                        <span>Open Map</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
                         variant="secondary"
                         onClick={() => setInspectModal(listing)}
                       >
@@ -1001,6 +1013,15 @@ export function RecipientDashboardPage() {
                       >
                         <MessageSquare className="w-3.5 h-3.5 mr-1" />
                         <span>Chat & History</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setMapModalListing(listing)}
+                      >
+                        <Navigation className="w-3.5 h-3.5 mr-1" />
+                        <span>Open Map</span>
                       </Button>
 
                       <Button
@@ -1255,6 +1276,14 @@ export function RecipientDashboardPage() {
           donation={chatModalListing}
           onClose={() => setChatModalListing(null)}
           onDeliveryUpdated={fetchRecipientListings}
+        />
+      )}
+
+      {/* Interactive Delivery Route Map */}
+      {mapModalListing && (
+        <DeliveryRouteModal
+          donation={mapModalListing}
+          onClose={() => setMapModalListing(null)}
         />
       )}
     </div>
