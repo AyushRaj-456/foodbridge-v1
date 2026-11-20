@@ -118,4 +118,23 @@ describe('Single Participation Role Selection and Visitor Mode Flow', () => {
     // Back to Step 1
     expect(screen.getByRole('heading', { name: /how would you like to participate\?/i })).toBeInTheDocument();
   });
+
+  it('automatically redirects onboarded users to their role dashboard and does not show role selection screen', () => {
+    renderComponent({
+      userDoc: { uid: 'donor-1', roles: ['donor'], activeRole: 'donor', onboardingComplete: true }
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith('/donor/dashboard', { replace: true });
+    expect(screen.queryByRole('heading', { name: /how would you like to participate\?/i })).not.toBeInTheDocument();
+  });
+
+  it('resumes directly at Step 2 profile setup when user has already selected a role but not finished onboarding', () => {
+    renderComponent({
+      userDoc: { uid: 'donor-2', roles: ['donor'], activeRole: 'donor', onboardingComplete: false }
+    });
+
+    // Directly renders Donor Profile (Step 2)
+    expect(screen.getByRole('heading', { name: /donor profile/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /how would you like to participate\?/i })).not.toBeInTheDocument();
+  });
 });

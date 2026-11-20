@@ -67,20 +67,21 @@ export function getUserDashboardRoute(userDoc) {
 
 /**
  * Wraps a Firestore Promise with a timeout to prevent hanging UI on slow networks.
+ * Distinguishes timeouts/errors from legitimate missing documents.
  */
-function fetchWithTimeout(promise, ms = 2500) {
+function fetchWithTimeout(promise, ms = 6000) {
   let timer;
   const timeoutPromise = new Promise((resolve) => {
-    timer = setTimeout(() => resolve(null), ms);
+    timer = setTimeout(() => resolve({ isTimeout: true, isError: false, data: null }), ms);
   });
   return Promise.race([
     promise.then((res) => {
       clearTimeout(timer);
-      return res;
+      return { data: res, isTimeout: false, isError: false };
     }).catch((err) => {
       clearTimeout(timer);
       console.warn('Firestore fetch caught fallback:', err.message);
-      return null;
+      return { data: null, isTimeout: false, isError: true, error: err };
     }),
     timeoutPromise
   ]);
@@ -125,6 +126,7 @@ export function AuthProvider({ children }) {
 
   /**
    * Fetches user document and active role profile from Firestore with deduplication & timeout safety.
+   * NEVER overwrites existing roles or completed onboarding status when network is slow or offline.
    */
   const fetchUserData = async (currentUser, force = false) => {
     if (!currentUser) {
@@ -148,15 +150,34 @@ export function AuthProvider({ children }) {
     const fetchPromise = (async () => {
       try {
         const userRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await fetchWithTimeout(getDoc(userRef), 2500);
+        const fetchRes = await fetchWithTimeout(getDoc(userRef), 6000);
 
+        // If fetch timed out or failed temporarily, DO NOT overwrite existing user document!
+        if (fetchRes.isTimeout || fetchRes.isError) {
+          console.warn('Firestore user fetch unavailable (timeout or error). Preserving current session.');
+          const existing = userDocRef.current || getCachedDoc(CACHE_USER_KEY);
+          if (existing && existing.uid === currentUser.uid) {
+            setUserDoc(existing);
+            return existing;
+          }
+          return userDocRef.current;
+        }
+
+        const userSnap = fetchRes.data;
         let uData = null;
-        if (userSnap && userSnap.exists()) {
+
+        if (userSnap && typeof userSnap.exists === 'function' && userSnap.exists()) {
           uData = userSnap.data();
           setUserDoc(uData);
           setCachedDoc(CACHE_USER_KEY, uData);
 
-          // Only fetch secondary role profile if user has completed onboarding and has an active role
+          // If user document already embeds profileData, hydrate immediately
+          if (uData.profileData) {
+            setProfileData(uData.profileData);
+            setCachedDoc(CACHE_ROLE_KEY, uData.profileData);
+          }
+
+          // Fetch secondary role collection document if needed
           const activeRole = uData.activeRole || (uData.roles && uData.roles[0]);
           if (activeRole && uData.onboardingComplete) {
             let colName = '';
@@ -166,22 +187,31 @@ export function AuthProvider({ children }) {
 
             if (colName) {
               const roleRef = doc(db, colName, currentUser.uid);
-              const roleSnap = await fetchWithTimeout(getDoc(roleRef), 2000);
-              if (roleSnap && roleSnap.exists()) {
-                const rData = roleSnap.data();
+              const roleRes = await fetchWithTimeout(getDoc(roleRef), 4000);
+              if (!roleRes.isTimeout && !roleRes.isError && roleRes.data && roleRes.data.exists()) {
+                const rData = roleRes.data.data();
                 setProfileData(rData);
                 setCachedDoc(CACHE_ROLE_KEY, rData);
-              } else {
-                setProfileData(null);
-                setCachedDoc(CACHE_ROLE_KEY, null);
               }
             }
-          } else {
-            setProfileData(null);
-            setCachedDoc(CACHE_ROLE_KEY, null);
           }
         } else {
-          // Document does not exist yet (e.g. initial Google sign-in)
+          // Document does not exist yet on Firestore server (new user)
+          // Safety Check: Never overwrite if local cache or ref already has a completed onboarding profile!
+          const existingLocal = userDocRef.current || getCachedDoc(CACHE_USER_KEY);
+          if (existingLocal && existingLocal.uid === currentUser.uid && (existingLocal.onboardingComplete || existingLocal.activeRole)) {
+            console.info('Restoring completed profile from local state to Firestore.');
+            setUserDoc(existingLocal);
+            setDoc(userRef, {
+              ...existingLocal,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch((err) => {
+              console.warn('Profile restore sync notice:', err.message);
+            });
+            return existingLocal;
+          }
+
+          // Genuine first-time user
           const initialDoc = {
             uid: currentUser.uid,
             email: currentUser.email,
@@ -209,17 +239,12 @@ export function AuthProvider({ children }) {
         }
         return uData;
       } catch (err) {
-        console.warn('Firestore profile retrieval fallback:', err.message);
-        const fallbackDoc = {
-          uid: currentUser.uid,
-          email: currentUser.email,
-          roles: [],
-          activeRole: null,
-          onboardingComplete: false,
-          isAdmin: false
-        };
-        setUserDoc((prev) => prev || fallbackDoc);
-        return fallbackDoc;
+        console.warn('Firestore profile retrieval error:', err.message);
+        const existing = userDocRef.current || getCachedDoc(CACHE_USER_KEY);
+        if (existing && existing.uid === currentUser.uid) {
+          return existing;
+        }
+        return userDocRef.current;
       } finally {
         inFlightFetchRef.current = null;
       }
@@ -383,18 +408,21 @@ export function AuthProvider({ children }) {
 
     if (colName) {
       const roleRef = doc(db, colName, user.uid);
-      const roleSnap = await fetchWithTimeout(getDoc(roleRef), 2000);
-      const rData = roleSnap && roleSnap.exists() ? roleSnap.data() : null;
-      setProfileData(rData);
-      setCachedDoc(CACHE_ROLE_KEY, rData);
+      const roleRes = await fetchWithTimeout(getDoc(roleRef), 4000);
+      if (!roleRes.isTimeout && !roleRes.isError && roleRes.data && roleRes.data.exists()) {
+        const rData = roleRes.data.data();
+        setProfileData(rData);
+        setCachedDoc(CACHE_ROLE_KEY, rData);
+      }
     }
   };
 
   /**
-   * Optimistic, non-blocking onboarding completion:
+   * Permanent onboarding completion:
    * 1. Updates memory state and localStorage cache synchronously.
-   * 2. Fires resilient Firestore writes using setDoc(..., { merge: true }).
-   * 3. Uses a 1200ms timeout race ceiling so slow networks NEVER block UI navigation.
+   * 2. Saves selected role, onboarding status, AND profile data directly into users/{uid} permanently.
+   * 3. Saves role-specific document into dedicated collections (donors, recipients, deliveryPartners).
+   * 4. Ensures returning users and refreshes restore completed onboarding reliably.
    */
   const completeOnboarding = async ({ selectedRole, selectedRoles, activeRole, donorData, recipientData, deliveryData }) => {
     if (!user) throw new Error('Must be signed in to complete onboarding');
@@ -404,47 +432,10 @@ export function AuthProvider({ children }) {
     const sanitizedRole = ['donor', 'recipient', 'delivery', 'visitor'].includes(chosenRole) ? chosenRole : 'visitor';
 
     const nowIso = new Date().toISOString();
-    const updatedUserDoc = {
-      ...(userDoc || {}),
-      uid: user.uid,
-      email: user.email,
-      roles: [sanitizedRole],
-      activeRole: sanitizedRole,
-      onboardingComplete: true,
-      updatedAt: nowIso
-    };
-
-    // Synchronously update in-memory state and localStorage cache
-    setUserDoc(updatedUserDoc);
-    userDocRef.current = updatedUserDoc;
-    setCachedDoc(CACHE_USER_KEY, updatedUserDoc);
-
-    const userRef = doc(db, 'users', user.uid);
-    const userWritePromise = setDoc(userRef, {
-      roles: [sanitizedRole],
-      activeRole: sanitizedRole,
-      onboardingComplete: true,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-
-    if (sanitizedRole === 'visitor') {
-      setProfileData(null);
-      setCachedDoc(CACHE_ROLE_KEY, null);
-
-      // Fast-race write for Visitor (up to 800ms wait, non-blocking)
-      await Promise.race([
-        userWritePromise,
-        new Promise((resolve) => setTimeout(resolve, 800))
-      ]).catch((err) => {
-        console.warn('Visitor background profile sync notice:', err.message);
-      });
-
-      return updatedUserDoc;
-    }
 
     // Prepare role-specific document
     let roleProfile = null;
-    let roleWritePromise = null;
+    let roleWritePromise = Promise.resolve();
 
     if (sanitizedRole === 'donor' && donorData) {
       roleProfile = {
@@ -492,22 +483,49 @@ export function AuthProvider({ children }) {
       }, { merge: true });
     }
 
+    const updatedUserDoc = {
+      ...(userDoc || {}),
+      uid: user.uid,
+      email: user.email,
+      roles: [sanitizedRole],
+      activeRole: sanitizedRole,
+      onboardingComplete: true,
+      updatedAt: nowIso,
+      profileData: roleProfile || null,
+      ...(roleProfile ? {
+        organizationName: roleProfile.organizationName || roleProfile.fullName || '',
+        contactPhone: roleProfile.phone || '',
+        district: roleProfile.district || roleProfile.serviceDistrict || 'Bengaluru Urban',
+        verificationStatus: roleProfile.verificationStatus || (sanitizedRole === 'donor' || sanitizedRole === 'visitor' ? 'verified' : 'pending')
+      } : {})
+    };
+
+    // Synchronously update in-memory state and localStorage cache
+    setUserDoc(updatedUserDoc);
+    userDocRef.current = updatedUserDoc;
+    setCachedDoc(CACHE_USER_KEY, updatedUserDoc);
+
     if (roleProfile) {
       setProfileData(roleProfile);
       setCachedDoc(CACHE_ROLE_KEY, roleProfile);
+    } else {
+      setProfileData(null);
+      setCachedDoc(CACHE_ROLE_KEY, null);
     }
 
-    // Race writes against a 1200ms ceiling so slow networks NEVER block UI navigation
-    const writeBatch = Promise.all([
-      userWritePromise,
-      roleWritePromise || Promise.resolve()
-    ]);
+    // Permanently write to users collection in Firestore with merge: true
+    const userRef = doc(db, 'users', user.uid);
+    const userWritePromise = setDoc(userRef, {
+      ...updatedUserDoc,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
 
+    // Race writes against a 1500ms ceiling so slow networks NEVER block UI navigation
     await Promise.race([
-      writeBatch,
-      new Promise((resolve) => setTimeout(resolve, 1200))
+      Promise.all([userWritePromise, roleWritePromise]),
+      new Promise((resolve) => setTimeout(resolve, 1500))
     ]).catch((err) => {
-      console.warn('Role profile background sync notice:', err.message);
+      console.warn('Onboarding permanent write background notice:', err.message);
     });
 
     return updatedUserDoc;
@@ -519,7 +537,8 @@ export function AuthProvider({ children }) {
     if (!userDoc) return false;
     if (isAdmin) return true;
     if (userDoc.activeRole === 'donor' || userDoc.activeRole === 'visitor') return true;
-    return profileData?.verificationStatus === 'verified';
+    const status = profileData?.verificationStatus || userDoc?.verificationStatus;
+    return status === 'verified';
   })();
 
   return (

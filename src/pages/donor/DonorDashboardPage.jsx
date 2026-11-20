@@ -50,9 +50,23 @@ export function DonorDashboardPage() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'history'
-  const [listings, setListings] = useState([]);
+
+  // Fast session cache hydration for instant 0ms listing rendering
+  const getCachedListings = () => {
+    try {
+      if (typeof window === 'undefined' || !window.sessionStorage || !user) return [];
+      const raw = window.sessionStorage.getItem(`foodbridge_donor_listings_${user.uid}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const initialListings = getCachedListings();
+  const [listings, setListings] = useState(initialListings);
   const [deliveriesMap, setDeliveriesMap] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => initialListings.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -62,10 +76,14 @@ export function DonorDashboardPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
-  const fetchListings = async () => {
+  const fetchListings = async (isManualRefresh = false) => {
     if (!user) return;
     try {
-      setLoading(true);
+      if (isManualRefresh) {
+        setRefreshing(true);
+      } else if (listings.length === 0) {
+        setLoading(true);
+      }
       setError('');
       const q = query(collection(db, 'listings'), where('donorId', '==', user.uid), limit(50));
       const snap = await getDocs(q);
@@ -79,6 +97,13 @@ export function DonorDashboardPage() {
       });
 
       setListings(items);
+
+      // Persist to session storage for instant reload on next visit
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          window.sessionStorage.setItem(`foodbridge_donor_listings_${user.uid}`, JSON.stringify(items));
+        }
+      } catch (e) {}
 
       // Fetch linked delivery documents in parallel with deduplication
       const uniqueDeliveryIds = [...new Set(items.map((i) => i.deliveryId).filter(Boolean))];
@@ -107,6 +132,7 @@ export function DonorDashboardPage() {
       setError('Unable to load listings. Please try again.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -224,8 +250,8 @@ export function DonorDashboardPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={fetchListings} loading={loading}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+          <Button variant="secondary" size="sm" onClick={() => fetchListings(true)} loading={refreshing}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </Button>
 
@@ -376,7 +402,7 @@ export function DonorDashboardPage() {
                         {listing.quantity} {listing.unit}
                       </span>
                       <span className="block text-[11px] text-stone-500">
-                        {listing.foodState.replace('_', ' ')}
+                        {(listing.foodState || 'freshly_prepared').replace(/_/g, ' ')}
                       </span>
                     </div>
                   </div>
@@ -393,7 +419,7 @@ export function DonorDashboardPage() {
                     <div className="p-2.5 rounded bg-surface-muted/60">
                       <span className="text-stone-500 block">Holding Condition</span>
                       <span className="font-medium text-stone-900 capitalize">
-                        {listing.storageCondition.replace('_', ' ')}
+                        {(listing.storageCondition || 'ambient').replace(/_/g, ' ')}
                       </span>
                     </div>
 

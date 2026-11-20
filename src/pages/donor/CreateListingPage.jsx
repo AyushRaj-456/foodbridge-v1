@@ -66,8 +66,11 @@ export function CreateListingPage() {
 
   const isEditing = Boolean(editListingId);
 
-  // Form State
-  const [formData, setFormData] = useState({
+  const formatDateTime = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const now = new Date();
+
+  // Form State initialized with sensible defaults
+  const [formData, setFormData] = useState(() => ({
     title: '',
     description: '',
     quantity: 25,
@@ -80,10 +83,10 @@ export function CreateListingPage() {
     latitude: 12.9716,
     longitude: 77.5946,
     pickupInstructions: profileData?.pickupInstructions || '',
-    availableFrom: '',
-    availableUntil: '',
-    preparedAt: '',
-    safeUseDeadline: '',
+    availableFrom: formatDateTime(new Date(now.getTime() + 15 * 60 * 1000)),
+    availableUntil: formatDateTime(new Date(now.getTime() + 4 * 60 * 60 * 1000)),
+    preparedAt: formatDateTime(new Date(now.getTime() - 30 * 60 * 1000)),
+    safeUseDeadline: formatDateTime(new Date(now.getTime() + 6 * 60 * 60 * 1000)),
     storageCondition: STORAGE_CONDITIONS.HOT_HELD,
     foodState: FOOD_STATES.FRESHLY_PREPARED,
     isVegetarian: true,
@@ -92,34 +95,24 @@ export function CreateListingPage() {
     donorDeclaration: false,
     photoUrl: '',
     photoName: ''
-  });
+  }));
 
   const [loading, setLoading] = useState(false);
   const [fetchingExisting, setFetchingExisting] = useState(isEditing);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [photoPreview, setPhotoPreview] = useState('');
+  const isSubmittingRef = React.useRef(false);
 
-  // Auto-fill dates with reasonable defaults on new listing
+  // Sync profile data if loaded asynchronously on new listing
   useEffect(() => {
-    if (!isEditing) {
-      const now = new Date();
-      const prepDefault = new Date(now.getTime() - 30 * 60 * 1000); // 30 mins ago
-      const fromDefault = new Date(now.getTime() + 15 * 60 * 1000);  // 15 mins from now
-      const untilDefault = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4 hours from now
-      const deadlineDefault = new Date(now.getTime() + 6 * 60 * 60 * 1000); // 6 hours from now
-
-      const formatDateTime = (d) => d.toISOString().slice(0, 16);
-
+    if (!isEditing && profileData) {
       setFormData((prev) => ({
         ...prev,
-        preparedAt: formatDateTime(prepDefault),
-        availableFrom: formatDateTime(fromDefault),
-        availableUntil: formatDateTime(untilDefault),
-        safeUseDeadline: formatDateTime(deadlineDefault),
-        contactPerson: prev.contactPerson || profileData?.contactPerson || '',
-        contactPhone: prev.contactPhone || profileData?.phone || '',
-        address: prev.address || profileData?.address || '',
-        district: prev.district || profileData?.district || 'Bengaluru Urban'
+        contactPerson: prev.contactPerson || profileData.contactPerson || '',
+        contactPhone: prev.contactPhone || profileData.phone || '',
+        address: prev.address || profileData.address || '',
+        district: prev.district || profileData.district || 'Bengaluru Urban'
       }));
     }
   }, [isEditing, profileData]);
@@ -166,6 +159,17 @@ export function CreateListingPage() {
     donorDeclaration: formData.donorDeclaration,
     intendedSuitability: formData.intendedSuitability
   });
+
+  // Strict form validity evaluation: all required fields must be present and safety verified
+  const isFormValid = Boolean(
+    formData.title?.trim() &&
+    formData.address?.trim() &&
+    formData.contactPhone?.trim() &&
+    Number(formData.quantity) > 0 &&
+    formData.safeUseDeadline &&
+    formData.donorDeclaration &&
+    safetyEvaluation.isEligible
+  );
 
   const handlePhotoUpload = async (file) => {
     if (!file) return;
@@ -226,7 +230,9 @@ export function CreateListingPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading || isSubmittingRef.current) return;
     setError('');
+    setSuccessMsg('');
 
     if (!formData.title || !formData.address || !formData.contactPhone) {
       setError('Please fill out all required fields.');
@@ -256,6 +262,7 @@ export function CreateListingPage() {
     }
 
     try {
+      isSubmittingRef.current = true;
       setLoading(true);
 
       const listingPayload = {
@@ -314,11 +321,21 @@ export function CreateListingPage() {
         await addDoc(collection(db, 'listings'), listingPayload);
       }
 
-      navigate('/donor/dashboard', { replace: true });
+      // Invalidate client-side listings cache so fresh listings load immediately
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          sessionStorage.removeItem('foodbridge_donor_listings_' + user.uid);
+        }
+      } catch (e) {}
+
+      setSuccessMsg(isEditing ? 'Listing updated successfully!' : 'Surplus food listing published successfully!');
+      setTimeout(() => {
+        navigate('/donor/dashboard', { replace: true });
+      }, 500);
     } catch (err) {
       console.error('Error saving listing:', err);
       setError(err.message || 'Error publishing surplus listing.');
-    } finally {
+      isSubmittingRef.current = false;
       setLoading(false);
     }
   };
@@ -357,6 +374,13 @@ export function CreateListingPage() {
         </p>
       </div>
 
+      {successMsg && (
+        <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs sm:text-sm text-emerald-800 flex items-start gap-2.5 animate-in fade-in">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+          <span className="font-semibold">{successMsg}</span>
+        </div>
+      )}
+
       {error && (
         <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-xs sm:text-sm text-red-700 flex items-start gap-2.5">
           <AlertTriangle className="w-5 h-5 flex-shrink-0 text-red-600" />
@@ -364,7 +388,16 @@ export function CreateListingPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={(e) => {
+          // Prevent accidental form submission when pressing Enter inside standard text inputs
+          if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'submit') {
+            e.preventDefault();
+          }
+        }}
+        className="space-y-8"
+      >
         {/* SECTION 1: FOOD DETAILS */}
         <Card className="p-6 sm:p-8 space-y-6">
           <h2 className="text-base sm:text-lg font-bold text-stone-900 pb-3 border-b border-border">
@@ -757,7 +790,7 @@ export function CreateListingPage() {
 
         {/* Action Buttons */}
         <div className="flex items-center justify-between pt-4">
-          <Button variant="secondary" onClick={() => navigate('/donor/dashboard')} disabled={loading}>
+          <Button type="button" variant="secondary" onClick={() => navigate('/donor/dashboard')} disabled={loading}>
             Cancel
           </Button>
 
@@ -766,7 +799,7 @@ export function CreateListingPage() {
             variant="primary"
             size="lg"
             loading={loading}
-            disabled={!safetyEvaluation.isEligible}
+            disabled={!isFormValid || loading}
           >
             {isEditing ? 'Save Changes' : 'Publish Food Listing'}
           </Button>

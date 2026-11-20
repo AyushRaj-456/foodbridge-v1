@@ -60,12 +60,37 @@ export function RecipientDashboardPage() {
   const { t } = useLocale();
   const { user, profileData, refreshUserProfile } = useAuth();
 
+  // Fast session cache hydration for instant 0ms listing rendering
+  const getCachedAvailable = () => {
+    try {
+      if (typeof window === 'undefined' || !window.sessionStorage || !user) return [];
+      const raw = window.sessionStorage.getItem(`foodbridge_recipient_avail_${user.uid}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const getCachedAccepted = () => {
+    try {
+      if (typeof window === 'undefined' || !window.sessionStorage || !user) return [];
+      const raw = window.sessionStorage.getItem(`foodbridge_recipient_accepted_${user.uid}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const initialAvail = getCachedAvailable();
+  const initialAccepted = getCachedAccepted();
+
   const [activeTab, setActiveTab] = useState('available'); // 'available' | 'accepted' | 'history' | 'settings'
-  const [availableListings, setAvailableListings] = useState([]);
-  const [acceptedListings, setAcceptedListings] = useState([]);
+  const [availableListings, setAvailableListings] = useState(initialAvail);
+  const [acceptedListings, setAcceptedListings] = useState(initialAccepted);
   const [deliveriesMap, setDeliveriesMap] = useState({});
   const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => initialAvail.length === 0 && initialAccepted.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [errorNotice, setErrorNotice] = useState('');
@@ -90,10 +115,14 @@ export function RecipientDashboardPage() {
   const [operationalStatus, setOperationalStatus] = useState(profileData?.operationalStatus || 'active');
   const [pushStatus, setPushStatus] = useState(getNotificationPermission());
 
-  const fetchRecipientListings = async () => {
+  const fetchRecipientListings = async (isManualRefresh = false) => {
     if (!user || !profileData) return;
     try {
-      setLoading(true);
+      if (isManualRefresh) {
+        setRefreshing(true);
+      } else if (availableListings.length === 0 && acceptedListings.length === 0) {
+        setLoading(true);
+      }
       setErrorNotice('');
 
       // Run matching cycle in background without blocking recipient UI
@@ -142,6 +171,14 @@ export function RecipientDashboardPage() {
       acceptedItems.sort((a, b) => (b.acceptedAt?.seconds || 0) - (a.acceptedAt?.seconds || 0));
       setAcceptedListings(acceptedItems);
 
+      // Persist to session storage for instant 0ms subsequent renders
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          window.sessionStorage.setItem(`foodbridge_recipient_avail_${user.uid}`, JSON.stringify(filtered));
+          window.sessionStorage.setItem(`foodbridge_recipient_accepted_${user.uid}`, JSON.stringify(acceptedItems));
+        }
+      } catch (e) {}
+
       // Fetch linked delivery objects in parallel with deduplication
       const uniqueDeliveryIds = [...new Set(acceptedItems.map((i) => i.deliveryId).filter(Boolean))];
       if (uniqueDeliveryIds.length > 0) {
@@ -174,6 +211,7 @@ export function RecipientDashboardPage() {
       setErrorNotice('Error loading incoming donations: ' + err.message);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -437,8 +475,8 @@ export function RecipientDashboardPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={fetchRecipientListings} loading={loading}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+          <Button variant="secondary" size="sm" onClick={() => fetchRecipientListings(true)} loading={refreshing}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </Button>
 
@@ -571,8 +609,8 @@ export function RecipientDashboardPage() {
               title="No Available Donations in Current Radius"
               description="No surplus listings are currently active within your initial radius matching your category. As waiting periods elapse (2 hours default), matching expands automatically."
               action={
-                <Button variant="outline" size="sm" onClick={fetchRecipientListings}>
-                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                <Button variant="outline" size="sm" onClick={() => fetchRecipientListings(true)} loading={refreshing}>
+                  <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
                   Check for Updates
                 </Button>
               }

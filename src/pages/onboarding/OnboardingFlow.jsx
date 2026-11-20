@@ -76,60 +76,66 @@ export function OnboardingFlow() {
   useEffect(() => {
     if (userDoc?.onboardingComplete) {
       navigate(getUserDashboardRoute(userDoc), { replace: true });
+    } else if (userDoc?.activeRole || (userDoc?.roles && userDoc.roles.length > 0)) {
+      const r = userDoc.activeRole || userDoc.roles[0];
+      setSelectedRole(r);
     }
   }, [userDoc, navigate]);
 
-  const [step, setStep] = useState(1); // 1 = select role, 2 = profile details
-  const [selectedRole, setSelectedRole] = useState('donor'); // Exactly one role
+  const hasPreselectedRole = Boolean(userDoc?.activeRole || (userDoc?.roles && userDoc.roles.length > 0));
+  const initialRole = userDoc?.activeRole || (userDoc?.roles && userDoc.roles[0]) || 'donor';
+
+  const [step, setStep] = useState(hasPreselectedRole ? 2 : 1); // 1 = select role, 2 = profile details
+  const [selectedRole, setSelectedRole] = useState(initialRole); // Exactly one role
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   // 1. Donor Form State
   const [donorData, setDonorData] = useState({
-    organizationName: '',
-    donorType: 'mess',
-    contactPerson: '',
-    phone: '',
-    address: '',
-    district: 'Bengaluru Urban',
-    pickupInstructions: ''
+    organizationName: userDoc?.organizationName || userDoc?.profileData?.organizationName || '',
+    donorType: userDoc?.donorType || userDoc?.profileData?.donorType || 'mess',
+    contactPerson: userDoc?.contactPerson || userDoc?.profileData?.contactPerson || '',
+    phone: userDoc?.contactPhone || userDoc?.phone || userDoc?.profileData?.phone || '',
+    address: userDoc?.address || userDoc?.profileData?.address || '',
+    district: userDoc?.district || userDoc?.profileData?.district || 'Bengaluru Urban',
+    pickupInstructions: userDoc?.pickupInstructions || userDoc?.profileData?.pickupInstructions || ''
   });
 
   // 2. Recipient Form State
   const [recipientData, setRecipientData] = useState({
-    organizationName: '',
-    registrationNumber: '',
-    category: 'human',
-    contactPerson: '',
-    phone: '',
+    organizationName: userDoc?.organizationName || userDoc?.profileData?.organizationName || '',
+    registrationNumber: userDoc?.profileData?.registrationNumber || '',
+    category: userDoc?.profileData?.category || 'human',
+    contactPerson: userDoc?.contactPerson || userDoc?.profileData?.contactPerson || '',
+    phone: userDoc?.contactPhone || userDoc?.phone || userDoc?.profileData?.phone || '',
     verifiedEmail: user?.email || '',
-    address: '',
-    district: 'Bengaluru Urban',
-    latitude: 12.9716,
-    longitude: 77.5946,
-    serviceRadiusKm: 5,
-    acceptedMaterialTypes: ['cooked_meals', 'packaged_foods'],
-    operatingHours: '08:00 - 20:00',
-    operatingDays: 'Daily',
-    totalCapacity: 100,
-    availableAdditionalCapacity: 50,
-    capacityUnit: 'meals',
-    documentUrl: '',
-    documentName: ''
+    address: userDoc?.address || userDoc?.profileData?.address || '',
+    district: userDoc?.district || userDoc?.profileData?.district || 'Bengaluru Urban',
+    latitude: userDoc?.profileData?.latitude || 12.9716,
+    longitude: userDoc?.profileData?.longitude || 77.5946,
+    serviceRadiusKm: userDoc?.profileData?.serviceRadiusKm || 5,
+    acceptedMaterialTypes: userDoc?.profileData?.acceptedMaterialTypes || ['cooked_meals', 'packaged_foods'],
+    operatingHours: userDoc?.profileData?.operatingHours || '08:00 - 20:00',
+    operatingDays: userDoc?.profileData?.operatingDays || 'Daily',
+    totalCapacity: userDoc?.profileData?.totalCapacity || 100,
+    availableAdditionalCapacity: userDoc?.profileData?.availableAdditionalCapacity || 50,
+    capacityUnit: userDoc?.profileData?.capacityUnit || 'meals',
+    documentUrl: userDoc?.profileData?.documentUrl || '',
+    documentName: userDoc?.profileData?.documentName || ''
   });
 
   // 3. Delivery Partner Form State
   const [deliveryData, setDeliveryData] = useState({
-    fullName: '',
-    phone: '',
-    emergencyContact: '',
-    serviceDistrict: 'Bengaluru Urban',
-    transportMode: 'two_wheeler',
-    maxCapacityKg: 20,
-    availability: 'flexible',
-    licenseNumber: '',
-    documentUrl: '',
-    documentName: ''
+    fullName: userDoc?.organizationName || userDoc?.profileData?.fullName || '',
+    phone: userDoc?.contactPhone || userDoc?.phone || userDoc?.profileData?.phone || '',
+    emergencyContact: userDoc?.profileData?.emergencyContact || '',
+    serviceDistrict: userDoc?.district || userDoc?.profileData?.serviceDistrict || 'Bengaluru Urban',
+    transportMode: userDoc?.profileData?.transportMode || 'two_wheeler',
+    maxCapacityKg: userDoc?.profileData?.maxCapacityKg || 20,
+    availability: userDoc?.profileData?.availability || 'flexible',
+    licenseNumber: userDoc?.profileData?.licenseNumber || '',
+    documentUrl: userDoc?.profileData?.documentUrl || '',
+    documentName: userDoc?.profileData?.documentName || ''
   });
 
   const handleFileUpload = async (file, roleType) => {
