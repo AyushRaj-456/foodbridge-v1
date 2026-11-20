@@ -1,0 +1,39 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin == true
+      );
+    }
+
+    // 1. Sensitive Verification Documents: ONLY accessible by the owner and admins
+    match /verification/{userId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) &&
+        request.resource.size < 5 * 1024 * 1024 && // Max 5MB per document
+        request.resource.contentType.matches('application/pdf|image/jpeg|image/png');
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // 2. Listing Photos: readable by authenticated users; max 3MB per photo
+    match /listings/{listingId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() &&
+        request.resource.size < 3 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/jpeg|image/png|image/webp');
+      allow delete: if isAuthenticated();
+    }
+  }
+}

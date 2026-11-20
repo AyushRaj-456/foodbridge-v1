@@ -1,0 +1,112 @@
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  getAuth,
+  connectAuthEmulator,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut,
+  onAuthStateChanged
+} from 'firebase/auth';
+import {
+  initializeFirestore,
+  getFirestore,
+  connectFirestoreEmulator,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  serverTimestamp,
+  addDoc,
+  limit
+} from 'firebase/firestore';
+import {
+  getStorage,
+  connectStorageEmulator,
+  ref,
+  uploadBytes,
+  getDownloadURL
+} from 'firebase/storage';
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'mock-api-key-for-local-emulator',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'foodbridge-dev.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'foodbridge-dev',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'foodbridge-dev.appspot.com',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '000000000000',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:000000000000:web:0000000000000000000000'
+};
+
+// Initialize Firebase App
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+
+export const auth = getAuth(app);
+
+// Initialize Firestore with auto-detect long polling to eliminate the 120-second WebChannel stream hang on Windows/proxied networks
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true
+  });
+} catch (e) {
+  firestoreDb = getFirestore(app);
+}
+export const db = firestoreDb;
+
+export const storage = getStorage(app);
+export const googleProvider = new GoogleAuthProvider();
+
+// Connect to Local Firebase Emulators in development/testing mode (Zero Cost)
+const useEmulator = import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true' ||
+                    (typeof window !== 'undefined' && window.location.hostname === 'localhost' && !import.meta.env.VITE_FIREBASE_API_KEY);
+
+if (useEmulator && typeof window !== 'undefined') {
+  // Prevent duplicate emulator connections
+  if (!window._firebaseEmulatorsConnected) {
+    try {
+      const authHost = import.meta.env.VITE_FIREBASE_EMULATOR_HOST || 'localhost';
+      const authPort = import.meta.env.VITE_FIREBASE_AUTH_PORT || 9099;
+      const firestorePort = import.meta.env.VITE_FIREBASE_FIRESTORE_PORT || 8080;
+      const storagePort = import.meta.env.VITE_FIREBASE_STORAGE_PORT || 9199;
+
+      connectAuthEmulator(auth, `http://${authHost}:${authPort}`, { disableWarnings: true });
+      connectFirestoreEmulator(db, authHost, Number(firestorePort));
+      connectStorageEmulator(storage, authHost, Number(storagePort));
+      window._firebaseEmulatorsConnected = true;
+    } catch (e) {
+      // In fast reload or vitest environments, emulator connection might already be bound
+      console.warn('Firebase emulator connection check:', e.message);
+    }
+  }
+}
+
+export {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  serverTimestamp,
+  addDoc,
+  limit,
+  ref,
+  uploadBytes,
+  getDownloadURL
+};

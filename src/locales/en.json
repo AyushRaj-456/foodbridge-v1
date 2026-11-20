@@ -1,0 +1,293 @@
+{
+  "nav": {
+    "mark": "FoodBridge",
+    "home": "Home",
+    "howItWorks": "How it works",
+    "recipients": "Recipients",
+    "impact": "Impact",
+    "signIn": "Sign in",
+    "donateFood": "Donate food",
+    "toggleMenu": "Toggle navigation menu",
+    "language": "Language",
+    "donorDashboard": "Donor Dashboard",
+    "recipientDashboard": "Recipient Dashboard",
+    "deliveryDashboard": "Delivery Dashboard",
+    "adminDashboard": "Admin Console",
+    "settings": "Account Settings",
+    "support": "Support Us",
+    "signOut": "Sign Out"
+  },
+  "hero": {
+    "headline": "Good Food Deserves a Second Chance.",
+    "subheadline": "Connecting surplus food from messes, caterers, marriage halls, and restaurants with verified community shelters, animal care centers, and green processing facilities across Karnataka.",
+    "ctaDonate": "Donate food",
+    "ctaExplore": "Explore how it works",
+    "globeBadge": "Karnataka Surplus Network",
+    "illustrativeNotice": "Illustrative redistribution corridors and simulated demo transport vectors."
+  },
+  "globe": {
+    "title": "Karnataka Redistribution Corridors",
+    "description": "Visualizing food rescue across regional hubs: Bengaluru, Tumakuru, Mysuru, and Hubballi-Dharwad.",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "reset": "Reset view",
+    "fallbackHeading": "Karnataka Regional Distribution",
+    "fallbackBody": "3D visualization is in low-resource or fallback mode. Active nodes are operating normally across Karnataka.",
+    "reducedMotion": "Motion reduced according to system preferences.",
+    "activeNodes": "Active Regional Corridors"
+  },
+  "impact": {
+    "title": "Community Impact",
+    "subtitle": "Authoritative metrics computed strictly from verified completed handovers. No invented statistics.",
+    "verifiedNotice": "Zero-State: Verified Records Only",
+    "zeroStateHeading": "Pilot Launch Data In Progress",
+    "zeroStateBody": "Our regional network in Karnataka is beginning operations. Real-time statistics will populate automatically as donors and recipients complete verified food handovers.",
+    "calculationMethod": "Transparent Calculation Method: 1 meal portion is defined as 0.4 kg standard nutritional serving portion (FSSAI/FAO baseline). 1 kg food waste diverted avoids 2.5 kg CO2e greenhouse gas emissions (UNEP factor).",
+    "metrics": {
+      "meals": {
+        "label": "Meals Provided",
+        "value": "0",
+        "unit": "verified portions"
+      },
+      "foodSaved": {
+        "label": "Surplus Food Saved",
+        "value": "0",
+        "unit": "kg redirected"
+      },
+      "organizations": {
+        "label": "Verified Partners",
+        "value": "0",
+        "unit": "community organizations"
+      },
+      "emissions": {
+        "label": "GHG Avoided",
+        "value": "0",
+        "unit": "kg CO₂e equivalent"
+      }
+    }
+  },
+  "howItWorks": {
+    "title": "How FoodBridge Works",
+    "subtitle": "A safe, transparent path for surplus food in three steps",
+    "step1": {
+      "number": "01",
+      "title": "List surplus food",
+      "description": "Donors specify food item, preparation time, safe-use window, quantity, allergens, and pickup location."
+    },
+    "step2": {
+      "number": "02",
+      "title": "Find a suitable recipient",
+      "description": "Our matching engine identifies verified recipients strictly by material suitability, geographic radius, and available additional capacity."
+    },
+    "step3": {
+      "number": "03",
+      "title": "Arrange pickup & confirm",
+      "description": "Direct pickup or a verified delivery partner carries the listing. Handover and receipt are confirmed for complete traceability."
+    }
+  },
+  "categories": {
+    "title": "Verified Recipient Categories",
+    "subtitle": "Strict suitability separation ensures surplus food reaches only the appropriate, verified destination.",
+    "safetyBanner": "Food safety is non-negotiable. Human and animal destinations are never interchangeable with waste processing.",
+    "items": {
+      "human": {
+        "title": "Human-Food Recipients",
+        "badge": "Safe for consumption",
+        "description": "Verified NGOs, children's homes, eldercare shelters, and community kitchens equipped with safe food storage.",
+        "accepts": "Accepts: Fresh prepared meals, packaged goods, clean produce within safe-use deadline."
+      },
+      "animal": {
+        "title": "Animal-Food Recipients",
+        "badge": "Animal-grade suitability",
+        "description": "Registered cattle shelters (gaushalas), animal sanctuaries, and approved veterinary care facilities.",
+        "accepts": "Accepts: Vegetarian surplus, unseasoned grains, fruits, safe raw vegetable trims."
+      },
+      "compost": {
+        "title": "Composting Facilities",
+        "badge": "Soil enrichment",
+        "description": "Authorized decentralized and community composting hubs converting organic residue into organic soil conditioner.",
+        "accepts": "Accepts: Vegetable peels, coffee grounds, garden greens, spoiled uncooked organic matter."
+      },
+      "biogas": {
+        "title": "Biogas Plants",
+        "badge": "Clean energy recovery",
+        "description": "Anaerobic biomethanation units transforming bulk biodegradable organic residues into clean cooking gas and power.",
+        "accepts": "Accepts: Bulk mixed organic scraps, wet kitchen waste, high-moisture biological byproducts."
+      }
+    }
+  },
+  "footer": {
+    "tagline": "Connecting surplus food with verified human, animal, and green recovery destinations across Karnataka.",
+    "sections": {
+      "about": "About",
+      "contact": "Contact",
+      "faqs": "FAQs",
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Service"
+    },
+    "placeholders": {
+      "about": "FoodBridge is a civic public-benefit project developed to curb food waste and nourish communities.",
+      "contact": "Contact local coordinator: help@foodbridge.internal | Bengaluru, Karnataka",
+      "faqs": "Frequently asked questions covering donor eligibility, verification guidelines, and safety criteria.",
+      "privacy": "Location privacy: exact addresses are kept confidential until an authorized match is confirmed.",
+      "terms": "Operational terms regarding food safety obligations, verification standards, and mutual handover confirmations."
+    },
+    "ownerNote": "[Project Owner Notice: Final legal terms, address, and support hotline to be completed prior to live rollout]",
+    "copyright": "FoodBridge Community Redistribution Platform. Open-source public benefit project."
+  },
+  "auth": {
+    "signInTitle": "Sign In to FoodBridge",
+    "signInSubtitle": "Access your community redistribution portal",
+    "registerTitle": "Create Your Account",
+    "registerSubtitle": "Join the Karnataka redistribution network",
+    "forgotTitle": "Reset Password",
+    "forgotSubtitle": "Enter your email to receive a password reset link",
+    "email": "Email Address",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "signInBtn": "Sign In",
+    "createAccountBtn": "Create Account",
+    "sendResetBtn": "Send Reset Link",
+    "forgotPasswordLink": "Forgot password?",
+    "googleSignIn": "Continue with Google",
+    "noAccount": "Don't have an account?",
+    "registerNow": "Register here",
+    "alreadyAccount": "Already registered?",
+    "signInNow": "Sign in",
+    "backToSignIn": "Back to Sign In",
+    "backHome": "Back to Home",
+    "notice": "Authentication and role portals are connected. All users sign in with verified credentials.",
+    "errors": {
+      "invalidEmail": "Please enter a valid email address.",
+      "shortPassword": "Password must be at least 6 characters.",
+      "passwordMismatch": "Passwords do not match.",
+      "invalidCredentials": "Incorrect email or password.",
+      "emailInUse": "This email is already registered. Please sign in instead.",
+      "tooManyRequests": "Too many attempts. Please wait a moment and try again.",
+      "weakPassword": "Please choose a stronger password (at least 6 characters).",
+      "generic": "Authentication failed. Please verify your details."
+    },
+    "success": {
+      "resetSent": "Password reset email sent. Please check your inbox."
+    }
+  },
+  "onboarding": {
+    "title": "Complete Your Profile",
+    "subtitle": "Select your operational role in the FoodBridge redistribution network",
+    "chooseRole": "Select Your Role",
+    "donor": "Food Donor",
+    "donorDesc": "Mess, restaurant, caterer, or institution with surplus food to share.",
+    "recipient": "Recipient Organization",
+    "recipientDesc": "Verified human shelter, animal care home, compost, or biogas facility.",
+    "delivery": "Delivery Partner",
+    "deliveryDesc": "Verified courier or volunteer assisting in food transport.",
+    "visitor": "Visitor",
+    "visitorDesc": "Explore FoodBridge and support its mission without food handling.",
+    "orgName": "Organization Name",
+    "contactPerson": "Contact Person",
+    "phone": "Contact Phone Number",
+    "address": "Street Address",
+    "district": "District",
+    "category": "Recipient Destination Category",
+    "capacity": "Available Additional Intake Capacity",
+    "capacityUnit": "Capacity Unit",
+    "transportMode": "Transport Mode",
+    "proofUpload": "Verification Document (Registration / FSSAI / ID)",
+    "submitBtn": "Complete Onboarding",
+    "success": "Onboarding profile saved successfully."
+  },
+  "donor": {
+    "createTitle": "Create Surplus Food Listing",
+    "createSubtitle": "Specify food details for automated matching to verified recipients",
+    "title": "Food / Material Title",
+    "description": "Description & Specifics",
+    "quantity": "Quantity",
+    "unit": "Unit",
+    "category": "Donor Category",
+    "foodState": "Food State",
+    "storageCondition": "Storage Condition",
+    "prepTime": "Preparation / Packaging Time",
+    "safeUseDeadline": "Safe-Use / Collection Deadline",
+    "isVegetarian": "Vegetarian",
+    "allergens": "Known Allergens",
+    "pickupAddress": "Pickup Address",
+    "pickupInstructions": "Pickup Instructions",
+    "declaration": "I declare that this food was prepared, handled, and stored hygienically.",
+    "submitListing": "Publish Food Listing",
+    "activeListings": "Active Surplus Listings",
+    "historyListings": "Donation History",
+    "matching": "Matching in Progress",
+    "claimed": "Claimed by Recipient",
+    "cancelListing": "Cancel Listing",
+    "cancelReason": "Reason for cancellation",
+    "confirmHandover": "Confirm Direct Handover",
+    "confirmCourier": "Confirm Courier Handover"
+  },
+  "recipient": {
+    "availableDonations": "Available Donations",
+    "acceptedDonations": "Accepted Allocations",
+    "capacityAlerts": "Capacity & Alerts",
+    "history": "Donation History",
+    "acceptFood": "Accept Food",
+    "declineFood": "Decline",
+    "requestCourier": "Request Delivery Partner",
+    "confirmReceipt": "Confirm Receipt of Food",
+    "reportIssue": "Report Issue / Dispute",
+    "availableCapacity": "Available Additional Capacity",
+    "pauseIntake": "Pause Intake",
+    "resumeIntake": "Resume Intake",
+    "browserAlerts": "Browser Push Notifications",
+    "enableAlerts": "Enable Notifications"
+  },
+  "delivery": {
+    "availableDeliveries": "Available Deliveries",
+    "myActiveDelivery": "My Active Delivery",
+    "deliveryHistory": "Delivery History",
+    "claimDelivery": "Claim Delivery",
+    "confirmPickup": "Confirm Pickup from Donor",
+    "confirmDropoff": "Confirm Delivery at Recipient",
+    "reportProblem": "Report Problem / Delay",
+    "directPaymentNotice": "Direct settlement between donor and recipient upon handover (Cash/UPI)."
+  },
+  "admin": {
+    "workspaceTitle": "Admin Operations Workspace",
+    "workspaceSubtitle": "Verification review, listings oversight, dispute management, and immutable audit logs",
+    "tabVerification": "Verification",
+    "tabListings": "Listings",
+    "tabDisputes": "Disputes & Reports",
+    "tabSuspensions": "Users & Suspension",
+    "tabAudit": "Audit History",
+    "approve": "Approve",
+    "reject": "Reject",
+    "requestInfo": "Request Info",
+    "suspend": "Suspend User",
+    "unsuspend": "Unsuspend User",
+    "resolveDispute": "Resolve Dispute",
+    "reason": "Reason"
+  },
+  "status": {
+    "matching": "Matching Candidates",
+    "accepted": "Claimed",
+    "in_transit": "In Transit",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "expired": "Expired",
+    "failed": "Failed",
+    "disputed": "Disputed",
+    "pending": "Pending Review",
+    "verified": "Verified",
+    "rejected": "Rejected",
+    "active": "Active",
+    "paused": "Paused"
+  },
+  "common": {
+    "loading": "Loading...",
+    "retry": "Try again",
+    "close": "Close",
+    "details": "Details",
+    "learnMore": "Learn more",
+    "refresh": "Refresh",
+    "search": "Search...",
+    "dismiss": "Dismiss"
+  }
+}
