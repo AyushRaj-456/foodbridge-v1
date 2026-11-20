@@ -49,11 +49,11 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
 
-// Initialize Firestore with auto-detect long polling to eliminate the 120-second WebChannel stream hang on Windows/proxied networks
+// Initialize Firestore with forced long polling to eliminate the WebChannel stream hang on Windows/proxied networks
 let firestoreDb;
 try {
   firestoreDb = initializeFirestore(app, {
-    experimentalAutoDetectLongPolling: true
+    experimentalForceLongPolling: true
   });
 } catch (e) {
   firestoreDb = getFirestore(app);
