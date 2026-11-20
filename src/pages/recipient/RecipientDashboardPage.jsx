@@ -35,6 +35,7 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Input } from '../../components/common/Input';
 import { EmptyState } from '../../components/common/EmptyState';
+import { DonationChatModal } from '../../components/chat/DonationChatModal';
 import {
   Building2,
   CheckCircle2,
@@ -53,7 +54,8 @@ import {
   PauseCircle,
   PlayCircle,
   PackageCheck,
-  AlertCircle
+  AlertCircle,
+  MessageSquare
 } from 'lucide-react';
 
 export function RecipientDashboardPage() {
@@ -109,6 +111,9 @@ export function RecipientDashboardPage() {
   // Dispute Modal
   const [disputeModal, setDisputeModal] = useState(null); // delivery object
   const [disputeReason, setDisputeReason] = useState('');
+
+  // Real-time In-App Chat Modal
+  const [chatModalListing, setChatModalListing] = useState(null);
 
   // Capacity & Status local state
   const [availCapacity, setAvailCapacity] = useState(profileData?.availableAdditionalCapacity || 50);
@@ -442,6 +447,14 @@ export function RecipientDashboardPage() {
   const myCapacity = profileData?.availableAdditionalCapacity || 0;
   const capacityUnit = profileData?.capacityUnit || 'meals';
 
+  const activeAcceptedListings = acceptedListings.filter((l) =>
+    ['accepted', 'delivery_coordination', 'awaiting_partner', 'partner_assigned', 'in_transit', 'picked_up', 'delivered_pending_confirmation'].includes(l.status)
+  );
+
+  const historyListings = acceptedListings.filter((l) =>
+    ['completed', 'cancelled', 'expired'].includes(l.status)
+  );
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 sm:py-12 space-y-8">
       {/* Top Header */}
@@ -541,10 +554,10 @@ export function RecipientDashboardPage() {
 
         <Card className="p-4 text-center">
           <span className="block text-2xl sm:text-3xl font-extrabold text-stone-900 font-mono">
-            {acceptedListings.filter((l) => l.status === 'accepted').length}
+            {activeAcceptedListings.length}
           </span>
           <span className="block text-xs font-semibold text-stone-600 mt-0.5">
-            Awaiting Pickup
+            Active / Handover
           </span>
         </Card>
 
@@ -559,10 +572,10 @@ export function RecipientDashboardPage() {
 
         <Card className="p-4 text-center">
           <span className="block text-2xl sm:text-3xl font-extrabold text-stone-900 font-mono">
-            {acceptedListings.filter((l) => l.status === 'completed').length}
+            {historyListings.length}
           </span>
           <span className="block text-xs font-semibold text-stone-600 mt-0.5">
-            Completed Allocations
+            Donation History
           </span>
         </Card>
       </div>
@@ -571,9 +584,9 @@ export function RecipientDashboardPage() {
       <div className="flex items-center gap-2 border-b border-border pb-px overflow-x-auto">
         {[
           { id: 'available', label: 'Available Donations', count: availableListings.length },
-          { id: 'accepted', label: 'Accepted / Handover', count: acceptedListings.filter(l => l.status === 'accepted').length },
+          { id: 'accepted', label: 'Accepted / Handover', count: activeAcceptedListings.length },
           { id: 'capacity', label: 'Capacity & Alerts', count: null },
-          { id: 'history', label: 'Donation History', count: acceptedListings.length }
+          { id: 'history', label: 'Donation History', count: historyListings.length }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -711,13 +724,13 @@ export function RecipientDashboardPage() {
           )
         ) : activeTab === 'accepted' ? (
           /* Accepted Donations Area */
-          acceptedListings.length === 0 ? (
+          activeAcceptedListings.length === 0 ? (
             <div className="py-16 text-center text-stone-500 text-sm">
               No accepted donations pending handover. Accept a listing from the available queue to coordinate pickup.
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {acceptedListings.map((listing) => (
+              {activeAcceptedListings.map((listing) => (
                 <Card key={listing.id} className="p-5 sm:p-6 space-y-4 border-emerald-200 bg-emerald-50/10">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-border/80">
                     <div>
@@ -725,15 +738,35 @@ export function RecipientDashboardPage() {
                         <h3 className="font-bold text-stone-900 text-lg">
                           {listing.title}
                         </h3>
-                        <Badge variant="verified" size="sm">CLAIMED</Badge>
+                        <Badge variant="verified" size="sm">
+                          {listing.deliveryMode === 'delivery_partner' ? 'COURIER' : 'CLAIMED'}
+                        </Badge>
                       </div>
                       <p className="text-xs text-stone-600 mt-0.5">
                         Donor: <strong>{listing.donorName}</strong> ({listing.contactPerson || 'Kitchen In-charge'})
                       </p>
                     </div>
 
-                    <div className="text-right flex-shrink-0">
-                      <span className="text-xl font-bold font-mono text-stone-900">
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => setChatModalListing(listing)}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                        <span>Chat</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setInspectModal(listing)}
+                      >
+                        <Eye className="w-3.5 h-3.5 mr-1" />
+                        <span>Details</span>
+                      </Button>
+
+                      <span className="text-xl font-bold font-mono text-stone-900 ml-2">
                         {listing.quantity} {listing.unit}
                       </span>
                     </div>
@@ -933,9 +966,84 @@ export function RecipientDashboardPage() {
           </div>
         ) : (
           /* Donation History Tab */
-          <div className="py-16 text-center text-stone-500 text-sm">
-            Completed donation records will be archived here as handovers are finalized.
-          </div>
+          historyListings.length === 0 ? (
+            <div className="py-16 text-center text-stone-500 text-sm bg-white rounded-xl border border-dashed border-stone-200">
+              No completed donation records found. Completed food handovers and deliveries will be permanently archived here.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {historyListings.map((listing) => (
+                <Card key={listing.id} className="p-5 sm:p-6 space-y-4 border-stone-200 bg-stone-50/40">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-border/70">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-stone-900 text-base sm:text-lg">
+                          {listing.title}
+                        </h3>
+                        <Badge variant="success" size="sm">
+                          {listing.status === 'completed' ? 'HANDOVER COMPLETED' : (listing.status || 'FINALIZED').toUpperCase()}
+                        </Badge>
+                        <Badge variant="outline" size="sm">
+                          {listing.category || 'Surplus Food'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-stone-600 mt-1">
+                        Donor: <strong>{listing.donorName || 'Verified Donor'}</strong>
+                        {listing.contactPerson && <span> ({listing.contactPerson})</span>}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setChatModalListing(listing)}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                        <span>Chat & History</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setInspectModal(listing)}
+                      >
+                        <Eye className="w-3.5 h-3.5 mr-1" />
+                        <span>View Details</span>
+                      </Button>
+
+                      <span className="text-lg font-bold font-mono text-stone-800 ml-2">
+                        {listing.quantity} {listing.unit}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Summary details */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-stone-600">
+                    <div className="p-3 rounded-lg bg-white border border-border">
+                      <span className="text-stone-400 block mb-0.5 font-medium">Pickup Origin</span>
+                      <span className="font-medium text-stone-800">{listing.address || 'Address on record'}</span>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-white border border-border">
+                      <span className="text-stone-400 block mb-0.5 font-medium">Donor Contact Phone</span>
+                      <a href={`tel:${listing.contactPhone}`} className="font-semibold text-brand-800 hover:underline flex items-center gap-1 mt-0.5">
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>{listing.contactPhone || 'Available in chat'}</span>
+                      </a>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-white border border-border">
+                      <span className="text-stone-400 block mb-0.5 font-medium">Handover Mode</span>
+                      <span className="font-medium text-stone-800">
+                        {listing.deliveryMode === 'delivery_partner' ? 'Verified Delivery Partner' : 'Direct Organization Pickup'}
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )
         )}
       </div>
 
@@ -1139,6 +1247,15 @@ export function RecipientDashboardPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Real-time In-App Donation & Delivery Chat */}
+      {chatModalListing && (
+        <DonationChatModal
+          donation={chatModalListing}
+          onClose={() => setChatModalListing(null)}
+          onDeliveryUpdated={fetchRecipientListings}
+        />
       )}
     </div>
   );

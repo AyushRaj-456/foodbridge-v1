@@ -6,6 +6,8 @@ import {
   collection,
   serverTimestamp
 } from 'firebase/firestore';
+import { addDeliveryPartnerToConversation, sendChatMessage } from './chatService';
+import { sendInAppNotification } from './notificationService';
 
 export const DELIVERY_STATUSES = {
   PENDING_AGREEMENT: 'pending_agreement',
@@ -135,13 +137,46 @@ export async function createDeliveryRequest(db, listing, recipientProfile, costD
 
   const docRef = await addDoc(collection(db, 'deliveries'), deliveryData);
 
-  // Link delivery ID to listing
+  // Link delivery ID to listing and set status to delivery_coordination
   const listRef = doc(db, 'listings', listing.id);
   await updateDoc(listRef, {
     deliveryId: docRef.id,
     deliveryMode: 'delivery_partner',
+    status: 'delivery_coordination',
     updatedAt: serverTimestamp()
   });
+
+  // Post system message to the chat
+  try {
+    await sendChatMessage(db, listing.id, {
+      senderId: 'system',
+      senderName: 'FoodBridge Platform',
+      senderRole: 'system',
+      text: `Delivery partner requested by ${isDonorInitiator ? 'donor' : 'recipient'}. Proposed total: ₹${totalAmount} (Donor: ₹${donorContribution}, Recipient: ₹${recipientContribution}). Waiting for mutual confirmation.`,
+      isSystemMessage: true,
+      meta: {
+        type: 'delivery_proposal',
+        deliveryId: docRef.id,
+        totalAmount,
+        donorContribution,
+        recipientContribution
+      }
+    });
+  } catch (e) {}
+
+  // Send notification to the other party
+  const targetUid = isDonorInitiator ? recipientProfile.userId || recipientProfile.id : listing.donorId;
+  const initiatorName = isDonorInitiator ? listing.donorName : recipientProfile.organizationName;
+  try {
+    await sendInAppNotification(db, {
+      recipientId: targetUid,
+      title: 'Delivery Coordination Requested',
+      body: `${initiatorName} proposed delivery for '${listing.title}'. Please review and confirm the contribution split.`,
+      link: isDonorInitiator ? '/recipient/dashboard' : '/donor/dashboard',
+      type: 'delivery',
+      donationId: listing.id
+    });
+  } catch (e) {}
 
   return docRef.id;
 }
@@ -157,7 +192,7 @@ export async function createDeliveryRequest(db, listing, recipientProfile, costD
 export async function confirmDeliveryAgreement(db, deliveryId, partyRole) {
   const deliveryRef = doc(db, 'deliveries', deliveryId);
 
-  return await runTransaction(db, async (transaction) => {
+  const txResult = await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(deliveryRef);
     if (!snap.exists()) throw new Error('Delivery request not found');
 
@@ -175,8 +210,49 @@ export async function confirmDeliveryAgreement(db, deliveryId, partyRole) {
       updatedAt: serverTimestamp()
     });
 
-    return { bothAgreed, status: newStatus };
+    if (bothAgreed && data.listingId) {
+      const listRef = doc(db, 'listings', data.listingId);
+      transaction.update(listRef, {
+        status: 'awaiting_partner',
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    return { bothAgreed, status: newStatus, delivery: data };
   });
+
+  if (txResult.bothAgreed && txResult.delivery) {
+    const d = txResult.delivery;
+    try {
+      await sendChatMessage(db, d.listingId, {
+        senderId: 'system',
+        senderName: 'FoodBridge Platform',
+        senderRole: 'system',
+        text: `Delivery arrangement confirmed by both parties (Total ₹${d.totalAmount}). Searching for a nearby verified delivery partner.`,
+        isSystemMessage: true
+      });
+
+      await sendInAppNotification(db, {
+        recipientId: d.donorId,
+        title: 'Delivery Confirmed',
+        body: `Delivery arrangement confirmed for '${d.listingTitle}'. Searching for an available delivery partner.`,
+        link: '/donor/dashboard',
+        type: 'delivery',
+        donationId: d.listingId
+      });
+
+      await sendInAppNotification(db, {
+        recipientId: d.recipientId,
+        title: 'Delivery Confirmed',
+        body: `Delivery arrangement confirmed for '${d.listingTitle}'. Searching for an available delivery partner.`,
+        link: '/recipient/dashboard',
+        type: 'delivery',
+        donationId: d.listingId
+      });
+    } catch (e) {}
+  }
+
+  return { bothAgreed: txResult.bothAgreed, status: txResult.status };
 }
 
 /**
@@ -194,8 +270,10 @@ export async function claimDeliveryAtomic(db, deliveryId, partnerId, partnerProf
   }
 
   const deliveryRef = doc(db, 'deliveries', deliveryId);
+  const partnerName = partnerProfile.fullName || 'Verified Courier';
+  const partnerPhone = partnerProfile.phone || '';
 
-  return await runTransaction(db, async (transaction) => {
+  const txResult = await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(deliveryRef);
     if (!snap.exists()) throw new Error('Delivery request not found');
 
@@ -213,8 +291,8 @@ export async function claimDeliveryAtomic(db, deliveryId, partnerId, partnerProf
     transaction.update(deliveryRef, {
       status: DELIVERY_STATUSES.ASSIGNED,
       assignedPartnerId: partnerId,
-      assignedPartnerName: partnerProfile.fullName || 'Verified Courier',
-      assignedPartnerPhone: partnerProfile.phone || '',
+      assignedPartnerName: partnerName,
+      assignedPartnerPhone: partnerPhone,
       transportMode: partnerProfile.transportMode || 'two_wheeler',
       assignedAt: serverTimestamp(),
       updatedAt: serverTimestamp()
@@ -226,12 +304,59 @@ export async function claimDeliveryAtomic(db, deliveryId, partnerId, partnerProf
       transaction.update(listRef, {
         status: 'in_transit',
         deliveryPartnerId: partnerId,
+        deliveryPartnerName: partnerName,
+        deliveryPartnerPhone: partnerPhone,
         updatedAt: serverTimestamp()
       });
     }
 
-    return { success: true };
+    return { success: true, delivery };
   });
+
+  // Post-transaction: Add delivery partner to group conversation
+  if (txResult.delivery?.listingId) {
+    const d = txResult.delivery;
+    try {
+      await addDeliveryPartnerToConversation(db, d.listingId, {
+        partnerId,
+        partnerName,
+        phone: partnerPhone
+      });
+    } catch (e) {
+      console.warn('Failed to add delivery partner to conversation:', e.message);
+    }
+
+    try {
+      await sendInAppNotification(db, {
+        recipientId: d.donorId,
+        title: 'Delivery Partner Assigned',
+        body: `${partnerName} has accepted the delivery assignment and joined the group chat.`,
+        link: '/donor/dashboard',
+        type: 'delivery',
+        donationId: d.listingId
+      });
+
+      await sendInAppNotification(db, {
+        recipientId: d.recipientId,
+        title: 'Delivery Partner Assigned',
+        body: `${partnerName} has accepted the delivery assignment and joined the group chat.`,
+        link: '/recipient/dashboard',
+        type: 'delivery',
+        donationId: d.listingId
+      });
+
+      await sendInAppNotification(db, {
+        recipientId: partnerId,
+        title: 'Delivery Job Assigned',
+        body: `You are assigned to deliver '${d.listingTitle}'. Open chat to coordinate with donor and recipient.`,
+        link: '/delivery/dashboard',
+        type: 'delivery',
+        donationId: d.listingId
+      });
+    } catch (e) {}
+  }
+
+  return { success: true };
 }
 
 /**
@@ -246,7 +371,7 @@ export async function claimDeliveryAtomic(db, deliveryId, partnerId, partnerProf
 export async function transitionDeliveryStatus(db, deliveryId, targetStatus, actor, metadata = {}) {
   const deliveryRef = doc(db, 'deliveries', deliveryId);
 
-  return await runTransaction(db, async (transaction) => {
+  const txResult = await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(deliveryRef);
     if (!snap.exists()) throw new Error('Delivery request not found');
 
@@ -255,7 +380,6 @@ export async function transitionDeliveryStatus(db, deliveryId, targetStatus, act
 
     // Validate authorized transition
     if (targetStatus === DELIVERY_STATUSES.PICKED_UP) {
-      // Must be currently assigned
       if (current !== DELIVERY_STATUSES.ASSIGNED) {
         throw new Error(`Cannot mark picked up from current status: ${current}`);
       }
@@ -264,8 +388,15 @@ export async function transitionDeliveryStatus(db, deliveryId, targetStatus, act
         pickupConfirmedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      if (delivery.listingId) {
+        const listRef = doc(db, 'listings', delivery.listingId);
+        transaction.update(listRef, {
+          status: 'in_transit',
+          handoverConfirmedByDonor: true,
+          updatedAt: serverTimestamp()
+        });
+      }
     } else if (targetStatus === DELIVERY_STATUSES.DELIVERED_PENDING_CONFIRMATION) {
-      // Must be currently picked_up
       if (current !== DELIVERY_STATUSES.PICKED_UP) {
         throw new Error(`Cannot mark delivered from current status: ${current}`);
       }
@@ -275,7 +406,6 @@ export async function transitionDeliveryStatus(db, deliveryId, targetStatus, act
         updatedAt: serverTimestamp()
       });
     } else if (targetStatus === DELIVERY_STATUSES.COMPLETED) {
-      // Must be delivered_pending_confirmation
       if (current !== DELIVERY_STATUSES.DELIVERED_PENDING_CONFIRMATION && current !== DELIVERY_STATUSES.PICKED_UP) {
         throw new Error(`Cannot complete delivery before arrival: ${current}`);
       }
@@ -314,6 +444,80 @@ export async function transitionDeliveryStatus(db, deliveryId, targetStatus, act
       throw new Error(`Unsupported delivery transition to ${targetStatus}`);
     }
 
-    return { previousStatus: current, newStatus: targetStatus };
+    return { previousStatus: current, newStatus: targetStatus, delivery };
   });
+
+  // Post-transition chat updates & notifications
+  if (txResult.delivery?.listingId) {
+    const d = txResult.delivery;
+    const listingId = d.listingId;
+
+    if (targetStatus === DELIVERY_STATUSES.PICKED_UP) {
+      try {
+        await sendChatMessage(db, listingId, {
+          senderId: 'system',
+          senderName: 'FoodBridge Platform',
+          senderRole: 'system',
+          text: `Food has been picked up from donor by ${d.assignedPartnerName || 'delivery partner'}. In transit to recipient destination.`,
+          isSystemMessage: true
+        });
+        await sendInAppNotification(db, {
+          recipientId: d.recipientId,
+          title: 'Food Picked Up — In Transit',
+          body: `${d.assignedPartnerName || 'Delivery partner'} has collected '${d.listingTitle}' and is on the way.`,
+          link: '/recipient/dashboard',
+          type: 'status',
+          donationId: listingId
+        });
+      } catch (e) {}
+    } else if (targetStatus === DELIVERY_STATUSES.DELIVERED_PENDING_CONFIRMATION) {
+      try {
+        await sendChatMessage(db, listingId, {
+          senderId: 'system',
+          senderName: 'FoodBridge Platform',
+          senderRole: 'system',
+          text: `${d.assignedPartnerName || 'Delivery partner'} has arrived and handed over the food. Awaiting recipient confirmation.`,
+          isSystemMessage: true
+        });
+        await sendInAppNotification(db, {
+          recipientId: d.recipientId,
+          title: 'Food Arrived — Please Confirm',
+          body: `Food has arrived at your location. Please confirm receipt in your dashboard.`,
+          link: '/recipient/dashboard',
+          type: 'status',
+          donationId: listingId
+        });
+      } catch (e) {}
+    } else if (targetStatus === DELIVERY_STATUSES.COMPLETED) {
+      try {
+        await sendChatMessage(db, listingId, {
+          senderId: 'system',
+          senderName: 'FoodBridge Platform',
+          senderRole: 'system',
+          text: `Food delivery completed and confirmed! Thank you to donor, recipient, and delivery partner for rescuing this surplus food.`,
+          isSystemMessage: true
+        });
+        await sendInAppNotification(db, {
+          recipientId: d.donorId,
+          title: 'Donation Completed!',
+          body: `Food donation '${d.listingTitle}' successfully delivered and confirmed.`,
+          link: '/donor/dashboard',
+          type: 'status',
+          donationId: listingId
+        });
+        if (d.assignedPartnerId) {
+          await sendInAppNotification(db, {
+            recipientId: d.assignedPartnerId,
+            title: 'Delivery Job Completed!',
+            body: `Recipient confirmed receipt for '${d.listingTitle}'. Great work!`,
+            link: '/delivery/dashboard',
+            type: 'status',
+            donationId: listingId
+          });
+        }
+      } catch (e) {}
+    }
+  }
+
+  return { previousStatus: txResult.previousStatus, newStatus: txResult.newStatus };
 }

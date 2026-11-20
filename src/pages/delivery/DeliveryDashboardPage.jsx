@@ -22,6 +22,7 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Input } from '../../components/common/Input';
+import { DonationChatModal } from '../../components/chat/DonationChatModal';
 import {
   Truck,
   CheckCircle2,
@@ -35,7 +36,8 @@ import {
   ShieldAlert,
   ArrowRight,
   PackageCheck,
-  FileWarning
+  FileWarning,
+  MessageSquare
 } from 'lucide-react';
 
 export function DeliveryDashboardPage() {
@@ -46,6 +48,7 @@ export function DeliveryDashboardPage() {
   const [availableDeliveries, setAvailableDeliveries] = useState([]);
   const [activeDelivery, setActiveDelivery] = useState(null);
   const [deliveryHistory, setDeliveryHistory] = useState([]);
+  const [chatModalDelivery, setChatModalDelivery] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState('');
@@ -413,7 +416,25 @@ export function DeliveryDashboardPage() {
                   <span>Report Problem / Unable to Deliver</span>
                 </button>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={() => setChatModalDelivery({
+                      id: activeDelivery.listingId,
+                      listingId: activeDelivery.listingId,
+                      title: activeDelivery.listingTitle,
+                      donorName: activeDelivery.donorName,
+                      acceptedRecipientName: activeDelivery.recipientName,
+                      deliveryId: activeDelivery.id,
+                      deliveryStatus: activeDelivery.status,
+                      ...activeDelivery
+                    })}
+                  >
+                    <MessageSquare className="w-4 h-4 mr-1.5" />
+                    <span>3-Party Chat</span>
+                  </Button>
+
                   {activeDelivery.status === DELIVERY_STATUSES.ASSIGNED && (
                     <Button
                       variant="primary"
@@ -538,8 +559,27 @@ export function DeliveryDashboardPage() {
                     </p>
                   </div>
 
-                  <div className="text-right text-stone-400 font-mono text-[11px]">
-                    {d.completedAt?.toDate ? d.completedAt.toDate().toLocaleDateString() : 'Archived'}
+                  <div className="flex items-center gap-3">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setChatModalDelivery({
+                        id: d.listingId,
+                        listingId: d.listingId,
+                        title: d.listingTitle,
+                        donorName: d.donorName,
+                        acceptedRecipientName: d.recipientName,
+                        deliveryId: d.id,
+                        deliveryStatus: d.status,
+                        ...d
+                      })}
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                      Chat & Log
+                    </Button>
+                    <div className="text-right text-stone-400 font-mono text-[11px]">
+                      {d.completedAt?.toDate ? d.completedAt.toDate().toLocaleDateString() : 'Archived'}
+                    </div>
                   </div>
                 </Card>
               ))}
@@ -589,6 +629,15 @@ export function DeliveryDashboardPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Real-time In-App 3-Party Donation & Delivery Chat */}
+      {chatModalDelivery && (
+        <DonationChatModal
+          donation={chatModalDelivery}
+          onClose={() => setChatModalDelivery(null)}
+          onDeliveryUpdated={fetchDeliveries}
+        />
       )}
     </div>
   );

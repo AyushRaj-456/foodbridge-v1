@@ -25,7 +25,9 @@ import {
   onSnapshot,
   serverTimestamp,
   addDoc,
-  limit
+  limit,
+  arrayUnion,
+  orderBy
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -106,6 +108,8 @@ export {
   serverTimestamp,
   addDoc,
   limit,
+  arrayUnion,
+  orderBy,
   ref,
   uploadBytes,
   getDownloadURL

@@ -14,9 +14,33 @@ const mockDbState = {
   listings: {}
 };
 
+vi.mock('../services/chatService', () => ({
+  getOrCreateConversation: vi.fn(async () => ({ id: 'mock_conv' })),
+  addDeliveryPartnerToConversation: vi.fn(async () => ({})),
+  sendChatMessage: vi.fn(async () => ({ id: 'mock_msg' }))
+}));
+
+vi.mock('../services/notificationService', () => ({
+  sendInAppNotification: vi.fn(async () => ({ id: 'mock_notif' })),
+  showLocalNotification: vi.fn()
+}));
+
 vi.mock('firebase/firestore', () => ({
+  getFirestore: vi.fn(() => ({})),
+  initializeFirestore: vi.fn(() => ({})),
+  persistentLocalCache: vi.fn(() => ({})),
+  persistentMultipleTabManager: vi.fn(() => ({})),
   doc: vi.fn((db, col, id) => ({ path: `${col}/${id}`, id })),
   collection: vi.fn((db, name) => ({ path: name })),
+  setDoc: vi.fn(async () => {}),
+  getDoc: vi.fn(async () => ({ exists: () => false, data: () => ({}) })),
+  query: vi.fn(() => ({})),
+  orderBy: vi.fn(() => ({})),
+  where: vi.fn(() => ({})),
+  limit: vi.fn(() => ({})),
+  getDocs: vi.fn(async () => ({ docs: [], empty: true })),
+  onSnapshot: vi.fn(() => () => {}),
+  arrayUnion: vi.fn((val) => [val]),
   serverTimestamp: vi.fn(() => 'SERVER_TIMESTAMP'),
   addDoc: vi.fn(async (colRef, data) => {
     const newId = 'del_auto_' + Math.random().toString(36).substring(7);

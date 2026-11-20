@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLocale } from '../../context/LocaleContext';
 import { LanguageSelector } from '../language/LanguageSelector';
+import { NotificationBell } from '../notifications/NotificationBell';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import {
@@ -106,6 +107,7 @@ export function Navbar() {
           {/* Right actions: Language Selector & Auth status */}
           <div className="hidden md:flex items-center gap-3">
             <LanguageSelector />
+            {user && <NotificationBell />}
 
             {!user ? (
               <>
@@ -234,6 +236,7 @@ export function Navbar() {
           {/* Mobile menu trigger button */}
           <div className="flex items-center gap-2 md:hidden">
             <LanguageSelector />
+            {user && <NotificationBell />}
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

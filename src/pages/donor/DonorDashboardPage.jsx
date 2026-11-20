@@ -25,6 +25,7 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Input } from '../../components/common/Input';
+import { DonationChatModal } from '../../components/chat/DonationChatModal';
 import {
   Utensils,
   Plus,
@@ -41,7 +42,8 @@ import {
   RefreshCw,
   Scale,
   Phone,
-  PackageCheck
+  PackageCheck,
+  MessageSquare
 } from 'lucide-react';
 
 export function DonorDashboardPage() {
@@ -71,6 +73,7 @@ export function DonorDashboardPage() {
   const [successMsg, setSuccessMsg] = useState('');
 
   // Modals
+  const [chatModalListing, setChatModalListing] = useState(null);
   const [detailsModal, setDetailsModal] = useState(null); // listing object
   const [cancelModal, setCancelModal] = useState(null); // listing object
   const [cancelReason, setCancelReason] = useState('');
@@ -454,12 +457,27 @@ export function DonorDashboardPage() {
                       <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-emerald-950">
                         <div className="flex items-center gap-2">
                           <Building2 className="w-4 h-4 text-emerald-700 flex-shrink-0" />
-                          <span>
-                            Claimed by <strong>{listing.acceptedRecipientName || 'Verified Organization'}</strong>
-                          </span>
+                          <div>
+                            <span>
+                              Claimed by <strong>{listing.acceptedRecipientName || 'Verified Organization'}</strong>
+                            </span>
+                            {listing.acceptedRecipientPhone && (
+                              <a href={`tel:${listing.acceptedRecipientPhone}`} className="ml-2 font-mono text-emerald-800 hover:underline">
+                                ({listing.acceptedRecipientPhone})
+                              </a>
+                            )}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-emerald-800">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => setChatModalListing(listing)}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                            <span>Chat</span>
+                          </Button>
+                          <span className="font-semibold text-emerald-800 text-[11px] px-2 py-0.5 rounded bg-emerald-100">
                             {listing.deliveryMode === 'delivery_partner' ? 'Delivery Partner Transport' : 'Direct Recipient Pickup'}
                           </span>
                         </div>
@@ -614,8 +632,20 @@ export function DonorDashboardPage() {
                     </p>
                   </div>
 
-                  <div className="text-right text-stone-500 font-mono text-[11px]">
-                    {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : 'Previous'}
+                  <div className="flex items-center gap-3">
+                    {item.acceptedRecipientId && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setChatModalListing(item)}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                        Chat & Log
+                      </Button>
+                    )}
+                    <div className="text-right text-stone-500 font-mono text-[11px]">
+                      {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : 'Previous'}
+                    </div>
                   </div>
                 </Card>
               ))}
@@ -695,6 +725,15 @@ export function DonorDashboardPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Real-time In-App Donation & Delivery Chat */}
+      {chatModalListing && (
+        <DonationChatModal
+          donation={chatModalListing}
+          onClose={() => setChatModalListing(null)}
+          onDeliveryUpdated={() => fetchListings(true)}
+        />
       )}
     </div>
   );

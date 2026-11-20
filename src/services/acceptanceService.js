@@ -6,6 +6,8 @@ import {
   arrayUnion
 } from 'firebase/firestore';
 import { calculateAvailableCapacity } from './capacityService';
+import { getOrCreateConversation } from './chatService';
+import { sendInAppNotification } from './notificationService';
 
 /**
  * Atomically claims a single-recipient surplus food listing using a Firestore transaction.
@@ -27,7 +29,7 @@ export async function acceptDonationAtomic(db, listingId, recipientId, recipient
   const listingRef = doc(db, 'listings', listingId);
   const recipientRef = doc(db, 'recipients', recipientId);
 
-  return await runTransaction(db, async (transaction) => {
+  const txResult = await runTransaction(db, async (transaction) => {
     // 1. Read current listing state
     const listingSnap = await transaction.get(listingRef);
     if (!listingSnap.exists()) {
@@ -136,9 +138,72 @@ export async function acceptDonationAtomic(db, listingId, recipientId, recipient
     return {
       success: true,
       listingId,
-      newAvailableCapacity: newAvailable
+      newAvailableCapacity: newAvailable,
+      listing,
+      recipient
     };
   });
+
+  // Post-transaction conversation creation & notifications
+  const recipientOrgName = txResult.recipient?.organizationName || recipientProfileData?.organizationName || 'Verified Organization';
+  const recipientPhone = txResult.recipient?.phone || recipientProfileData?.phone || '';
+  const donorName = txResult.listing?.donorName || 'Food Donor';
+  const donorId = txResult.listing?.donorId;
+  const listingTitle = txResult.listing?.title || 'Food Donation';
+  const quantity = txResult.listing?.quantity || '';
+  const unit = txResult.listing?.unit || 'meals';
+
+  // Store recipient phone on listing so donor can see recipient contact details
+  if (recipientPhone) {
+    try {
+      await updateDoc(listingRef, { acceptedRecipientPhone: recipientPhone });
+    } catch (e) {}
+  }
+
+  // Initialize private real-time chat between donor and recipient
+  if (donorId) {
+    try {
+      await getOrCreateConversation(db, {
+        donationId: listingId,
+        donationTitle: listingTitle,
+        donorId,
+        donorName,
+        recipientId,
+        recipientName: recipientOrgName
+      });
+    } catch (chatErr) {
+      console.warn('Post-acceptance chat creation notice:', chatErr.message);
+    }
+
+    // Send notifications to both parties
+    try {
+      await sendInAppNotification(db, {
+        recipientId: donorId,
+        title: `Donation Accepted: ${listingTitle}`,
+        body: `${recipientOrgName} has accepted your food donation. Direct pickup coordination is active. Open chat to arrange handover.`,
+        link: '/donor/dashboard',
+        type: 'acceptance',
+        donationId: listingId
+      });
+
+      await sendInAppNotification(db, {
+        recipientId,
+        title: `Donation Claimed: ${listingTitle}`,
+        body: `You successfully claimed ${quantity} ${unit} from ${donorName}. Coordinate pickup with the donor directly.`,
+        link: '/recipient/dashboard',
+        type: 'acceptance',
+        donationId: listingId
+      });
+    } catch (notifErr) {
+      console.warn('Post-acceptance notification notice:', notifErr.message);
+    }
+  }
+
+  return {
+    success: true,
+    listingId,
+    newAvailableCapacity: txResult.newAvailableCapacity
+  };
 }
 
 /**
