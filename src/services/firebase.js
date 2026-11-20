@@ -36,12 +36,12 @@ import {
 } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'mock-api-key-for-local-emulator',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'foodbridge-dev.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'foodbridge-dev',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'foodbridge-dev.appspot.com',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '000000000000',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:000000000000:web:0000000000000000000000'
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyBGOuoeL8JEfLZkwfBpjd4QybUftwTI_W8',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'foodbridge-v1.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'foodbridge-v1',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'foodbridge-v1.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '783857884676',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:783857884676:web:305a976d7009e9d6911f51'
 };
 
 // Initialize Firebase App
