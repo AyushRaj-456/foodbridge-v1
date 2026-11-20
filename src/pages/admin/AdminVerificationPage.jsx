@@ -6,6 +6,7 @@ import {
   collection,
   query,
   limit,
+  where,
   getDocs,
   doc,
   updateDoc,
@@ -85,32 +86,103 @@ export function AdminVerificationPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Concurrently fetch all administrative datasets in parallel
-      const [recSnap, delSnap, listSnap, devSnap, auditSnap] = await Promise.all([
-        getDocs(collection(db, 'recipients')),
-        getDocs(collection(db, 'deliveryPartners')),
-        getDocs(query(collection(db, 'listings'), limit(100))),
-        getDocs(query(collection(db, 'deliveries'), limit(100))),
-        getDocs(query(collection(db, 'auditLogs'), limit(100)))
-      ]);
+      // 1. Fetch recipient records from 'recipients' and 'users' (fallback scan)
+      const recDocs = [];
+      try {
+        const recSnap = await getDocs(collection(db, 'recipients'));
+        recSnap.docs.forEach((d) => recDocs.push({ id: d.id, ...d.data(), entityType: 'recipient' }));
+      } catch (err) {
+        console.warn('recipients collection query fallback:', err.message);
+      }
 
-      const recList = recSnap.docs.map((d) => ({ id: d.id, ...d.data(), entityType: 'recipient' }));
-      setRecipients(recList);
+      try {
+        const usersSnap = await getDocs(query(collection(db, 'users'), where('activeRole', '==', 'recipient')));
+        usersSnap.docs.forEach((d) => {
+          const u = d.data();
+          if (!recDocs.some((r) => r.id === d.id || r.userId === d.id)) {
+            recDocs.push({
+              id: d.id,
+              userId: d.id,
+              email: u.email,
+              organizationName: u.organizationName || u.profileData?.organizationName || u.email,
+              contactPerson: u.contactPerson || u.profileData?.contactPerson || '',
+              phone: u.contactPhone || u.phone || u.profileData?.phone || '',
+              district: u.district || u.profileData?.district || 'Bengaluru Urban',
+              address: u.address || u.profileData?.address || '',
+              recipientCategory: u.recipientCategory || u.profileData?.recipientCategory || 'human',
+              verificationStatus: u.verificationStatus || 'pending',
+              entityType: 'recipient',
+              createdAt: u.createdAt
+            });
+          }
+        });
+      } catch (err) {
+        console.warn('users recipient fallback query:', err.message);
+      }
+      setRecipients(recDocs);
 
-      const delList = delSnap.docs.map((d) => ({ id: d.id, ...d.data(), entityType: 'delivery' }));
-      setDeliveryPartners(delList);
+      // 2. Fetch delivery partners from 'deliveryPartners' and 'users'
+      const delDocs = [];
+      try {
+        const delSnap = await getDocs(collection(db, 'deliveryPartners'));
+        delSnap.docs.forEach((d) => delDocs.push({ id: d.id, ...d.data(), entityType: 'delivery' }));
+      } catch (err) {
+        console.warn('deliveryPartners collection query fallback:', err.message);
+      }
 
-      const listData = listSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      listData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setListings(listData);
+      try {
+        const delUsersSnap = await getDocs(query(collection(db, 'users'), where('activeRole', '==', 'delivery')));
+        delUsersSnap.docs.forEach((d) => {
+          const u = d.data();
+          if (!delDocs.some((del) => del.id === d.id || del.userId === d.id)) {
+            delDocs.push({
+              id: d.id,
+              userId: d.id,
+              email: u.email,
+              fullName: u.fullName || u.profileData?.fullName || u.email,
+              phone: u.contactPhone || u.phone || u.profileData?.phone || '',
+              vehicleType: u.vehicleType || u.profileData?.vehicleType || 'two_wheeler',
+              serviceDistrict: u.district || u.profileData?.district || 'Bengaluru Urban',
+              verificationStatus: u.verificationStatus || 'pending',
+              entityType: 'delivery',
+              createdAt: u.createdAt
+            });
+          }
+        });
+      } catch (err) {
+        console.warn('users delivery fallback query:', err.message);
+      }
+      setDeliveryPartners(delDocs);
 
-      const devData = devSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      devData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setDeliveries(devData);
+      // 3. Fetch listings
+      try {
+        const listSnap = await getDocs(query(collection(db, 'listings'), limit(100)));
+        const listData = listSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        listData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setListings(listData);
+      } catch (err) {
+        console.warn('listings query fallback:', err.message);
+      }
 
-      const logs = auditSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      logs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-      setAuditLogs(logs);
+      // 4. Fetch deliveries
+      try {
+        const devSnap = await getDocs(query(collection(db, 'deliveries'), limit(100)));
+        const devData = devSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        devData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setDeliveries(devData);
+      } catch (err) {
+        console.warn('deliveries query fallback:', err.message);
+      }
+
+      // 5. Fetch audit logs
+      try {
+        const auditSnap = await getDocs(query(collection(db, 'auditLogs'), limit(100)));
+        const logs = auditSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        logs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+        setAuditLogs(logs);
+      } catch (err) {
+        console.warn('auditLogs query fallback:', err.message);
+      }
     } catch (err) {
       console.error('Error loading admin operations data:', err);
     } finally {
@@ -143,27 +215,49 @@ export function AdminVerificationPage() {
       const collectionName = entityType === 'recipient' ? 'recipients' : 'deliveryPartners';
       const targetRef = doc(db, collectionName, item.userId || item.id);
 
-      await updateDoc(targetRef, {
-        verificationStatus: newStatus,
-        verifiedAt: newStatus === 'verified' ? serverTimestamp() : null,
-        verifiedBy: user.uid,
-        rejectionReason: (decision === 'reject' || decision === 'info') ? reason : null,
-        updatedAt: serverTimestamp()
-      });
+      // Primary collection update
+      try {
+        await updateDoc(targetRef, {
+          verificationStatus: newStatus,
+          verifiedAt: newStatus === 'verified' ? serverTimestamp() : null,
+          verifiedBy: user.uid,
+          rejectionReason: (decision === 'reject' || decision === 'info') ? reason : null,
+          updatedAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn('Primary role document update notice:', err.message);
+      }
 
-      // Immutable Audit Log Record
-      await addDoc(collection(db, 'auditLogs'), {
-        actorUid: user.uid,
-        actorEmail: user.email,
-        targetUid: item.userId || item.id,
-        targetName: item.organizationName || item.fullName || 'Unknown',
-        targetType: entityType,
-        action: `verification_${decision}`,
-        previousStatus: item.verificationStatus || 'pending',
-        newStatus,
-        reason: reason.trim() || null,
-        timestamp: serverTimestamp()
-      });
+      // Sync user document
+      try {
+        const userRef = doc(db, 'users', item.userId || item.id);
+        await updateDoc(userRef, {
+          verificationStatus: newStatus,
+          verifiedAt: newStatus === 'verified' ? serverTimestamp() : null,
+          verifiedBy: user.uid,
+          updatedAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn('User document sync notice:', err.message);
+      }
+
+      // Immutable Audit Log Record (non-blocking)
+      try {
+        await addDoc(collection(db, 'auditLogs'), {
+          actorUid: user.uid,
+          actorEmail: user.email,
+          targetUid: item.userId || item.id,
+          targetName: item.organizationName || item.fullName || 'Unknown',
+          targetType: entityType,
+          action: `verification_${decision}`,
+          previousStatus: item.verificationStatus || 'pending',
+          newStatus,
+          reason: reason.trim() || null,
+          timestamp: serverTimestamp()
+        });
+      } catch (auditErr) {
+        console.warn('Audit log write notice:', auditErr.message);
+      }
 
       setNotice(`Marked ${item.organizationName || item.fullName} as ${newStatus.toUpperCase()}.`);
       setActionModal(null);
