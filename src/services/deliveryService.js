@@ -650,26 +650,34 @@ export async function requestAndAssignDeliveryPartner(dbInstance = db, {
   const partnerName = selectedPartner.fullName || selectedPartner.organizationName || 'Verified Courier';
   const partnerPhone = selectedPartner.phone || '';
 
-  // 4. Create Delivery Request document
+  // 4. Create Delivery Request document (sanitize route data to avoid Firestore nested array error)
+  const sanitizedRouteData = {
+    distanceKm,
+    durationMin,
+    fare,
+    isRealRoadRoute: Boolean(routeAndFare?.isRealRoadRoute),
+    coordinatesJson: JSON.stringify(routeAndFare?.coordinates || [])
+  };
+
   const deliveryData = {
     listingId: donation.id,
-    listingTitle: donation.title,
-    donorId: donation.donorId,
+    listingTitle: donation.title || 'Food Donation Listing',
+    donorId: donation.donorId || '',
     donorName: donation.donorName || 'Food Donor',
     donorPhone: donation.contactPhone || donation.donorPhone || '',
     recipientId: donation.acceptedRecipientId || recipientProfile?.userId || '',
     recipientName: donation.acceptedRecipientName || recipientProfile?.organizationName || 'Verified Organization',
     recipientPhone: donation.acceptedRecipientPhone || recipientProfile?.phone || '',
-    pickupAddress: donation.address,
-    pickupDistrict: donation.district || district,
+    pickupAddress: donation.address || 'Pickup Location',
+    pickupDistrict: donation.district || district || 'Bengaluru Urban',
     pickupLatitude: pickupLat,
     pickupLongitude: pickupLon,
     dropoffAddress: donation.acceptedRecipientAddress || recipientProfile?.address || 'Recipient Organization Facility',
-    dropoffDistrict: district,
+    dropoffDistrict: district || 'Bengaluru Urban',
     dropoffLatitude: dropLat,
     dropoffLongitude: dropLon,
-    quantity: donation.quantity,
-    unit: donation.unit,
+    quantity: Number(donation.quantity) || 1,
+    unit: donation.unit || 'units',
     storageCondition: donation.storageCondition || 'ambient',
     safeUseDeadline: donation.safeUseDeadline || null,
     totalAmount: fare.totalFare,
@@ -678,7 +686,7 @@ export async function requestAndAssignDeliveryPartner(dbInstance = db, {
     paymentStatus: 'pending', // Marks 50/50 fee split as payable/pending
     approxDistanceKm: distanceKm,
     estimatedDurationMin: durationMin,
-    routeData: routeAndFare,
+    routeData: sanitizedRouteData,
     status: DELIVERY_STATUSES.ASSIGNED,
     assignedPartnerId: partnerId,
     assignedPartnerName: partnerName,
@@ -715,7 +723,7 @@ export async function requestAndAssignDeliveryPartner(dbInstance = db, {
       deliveryFare: fare.totalFare,
       deliveryDonorShare: fare.donorShare,
       deliveryRecipientShare: fare.recipientShare,
-      routeData: routeAndFare,
+      routeData: sanitizedRouteData,
       status: 'in_transit',
       updatedAt: serverTimestamp()
     });

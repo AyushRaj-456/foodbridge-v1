@@ -226,6 +226,64 @@ describe('Chat, Delivery Coordination & Route Map Suite', () => {
     assignSpy.mockRestore();
   });
 
+  it('FEATURE 2: requestAndAssignDeliveryPartner sanitizes routeData and produces zero nested arrays in Firestore payload', async () => {
+    let capturedDeliveryDoc = null;
+    const mockDb = {};
+
+    const firebaseModule = await import('../services/firebase');
+    const origGetDocs = firebaseModule.getDocs;
+    const origAddDoc = firebaseModule.addDoc;
+
+    firebaseModule.getDocs = vi.fn(async () => ({
+      docs: [{
+        id: 'partner_01',
+        data: () => ({
+          userId: 'partner_01',
+          fullName: 'Suresh Express',
+          serviceDistrict: 'Bengaluru Urban',
+          verificationStatus: 'verified',
+          isAvailable: true,
+          activeDeliveryId: null
+        })
+      }],
+      empty: false
+    }));
+
+    firebaseModule.addDoc = vi.fn(async (colRef, data) => {
+      // Capture the deliveries collection document
+      if (data?.listingId && !capturedDeliveryDoc) {
+        capturedDeliveryDoc = data;
+      }
+      return { id: 'del_mock_123' };
+    });
+
+    const res = await deliveryService.requestAndAssignDeliveryPartner(mockDb, {
+      donation: sampleDonation,
+      requestedBy: 'recipient',
+      requesterName: 'City Shelter NGO'
+    });
+
+    expect(res.success).toBe(true);
+    expect(capturedDeliveryDoc).not.toBeNull();
+
+    // Check recursive nested arrays
+    const hasNestedArray = (obj) => {
+      if (Array.isArray(obj)) {
+        return obj.some(item => Array.isArray(item));
+      }
+      if (obj && typeof obj === 'object') {
+        return Object.values(obj).some(val => hasNestedArray(val));
+      }
+      return false;
+    };
+
+    expect(hasNestedArray(capturedDeliveryDoc)).toBe(false);
+    expect(typeof capturedDeliveryDoc.routeData?.coordinatesJson).toBe('string');
+
+    firebaseModule.getDocs = origGetDocs;
+    firebaseModule.addDoc = origAddDoc;
+  });
+
   it('FEATURE 3: calculates transparent 50/50 delivery fare with configurable base fee and per-km rate', () => {
     // 5 km route: Base ₹40 + (5 × ₹12) = ₹100. Donor: ₹50, Recipient: ₹50
     const fare5km = calculateDeliveryFare(5.0);
