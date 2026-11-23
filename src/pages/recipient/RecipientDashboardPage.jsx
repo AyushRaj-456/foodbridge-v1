@@ -24,6 +24,7 @@ import {
   confirmDeliveryAgreement,
   transitionDeliveryStatus
 } from '../../services/deliveryService';
+import { processDonationCompletionRewards } from '../../services/rewardService';
 import {
   isPushNotificationSupported,
   getNotificationPermission,
@@ -37,6 +38,7 @@ import { Input } from '../../components/common/Input';
 import { EmptyState } from '../../components/common/EmptyState';
 import { DonationChatModal } from '../../components/chat/DonationChatModal';
 import { DeliveryRouteModal } from '../../components/map/DeliveryRouteModal';
+import { WalletView } from '../../components/wallet/WalletView';
 import {
   Building2,
   CheckCircle2,
@@ -345,6 +347,12 @@ export function RecipientDashboardPage() {
         completedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      // Evaluate reward tokens for eligible participants
+      try {
+        await processDonationCompletionRewards(db, { ...listing, status: 'completed' });
+      } catch (rewErr) {
+        console.warn('Notice processing handover rewards:', rewErr.message);
+      }
       setNotice(`Direct pickup confirmed for "${listing.title}". Redistribution complete.`);
       await fetchRecipientListings();
     } catch (err) {
@@ -588,6 +596,7 @@ export function RecipientDashboardPage() {
         {[
           { id: 'available', label: 'Available Donations', count: availableListings.length },
           { id: 'accepted', label: 'Accepted / Handover', count: activeAcceptedListings.length },
+          { id: 'wallet', label: 'Wallet & Rewards', count: null },
           { id: 'capacity', label: 'Capacity & Alerts', count: null },
           { id: 'history', label: 'Donation History', count: historyListings.length }
         ].map((tab) => (
@@ -617,6 +626,8 @@ export function RecipientDashboardPage() {
           <div className="py-20 text-center text-stone-500 text-sm">
             Evaluating incoming redistribution allocations...
           </div>
+        ) : activeTab === 'wallet' ? (
+          <WalletView role="recipient" />
         ) : activeTab === 'available' ? (
           /* Available Donations Cards */
           availableListings.length === 0 ? (

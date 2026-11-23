@@ -8,12 +8,15 @@ import {
   limit,
   where,
   getDocs,
+  getDoc,
   doc,
   updateDoc,
   addDoc,
   serverTimestamp
 } from '../../services/firebase';
 import { releaseRecipientCapacity } from '../../services/capacityService';
+import { processDonationCompletionRewards } from '../../services/rewardService';
+import { AdminMembershipAndRewards } from '../../components/admin/AdminMembershipAndRewards';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
@@ -354,6 +357,16 @@ export function AdminVerificationPage() {
             completedAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
+
+          // Trigger reward evaluation on admin completed resolution
+          try {
+            const lSnap = await getDoc(listRef);
+            if (lSnap.exists()) {
+              await processDonationCompletionRewards(db, { id: disputeModal.listingId, ...lSnap.data(), status: 'completed' });
+            }
+          } catch (rewErr) {
+            console.warn('Notice triggering dispute completion rewards:', rewErr.message);
+          }
         }
       } else {
         // Cancel delivery and release recipient capacity
@@ -556,6 +569,7 @@ export function AdminVerificationPage() {
           { id: 'verification', label: 'Organization Verification', count: pendingVerificationsCount },
           { id: 'listings', label: 'Listings Oversight', count: listings.length },
           { id: 'disputes', label: 'Disputes & Issues', count: activeDisputes.length },
+          { id: 'memberships', label: 'Memberships & Rewards', count: null },
           { id: 'suspensions', label: 'Users & Suspension', count: allPartnersAndOrgs.length },
           { id: 'audit', label: 'Audit Trail', count: auditLogs.length }
         ].map((tab) => (
@@ -884,6 +898,8 @@ export function AdminVerificationPage() {
               ))}
             </div>
           )
+        ) : activeTab === 'memberships' ? (
+          <AdminMembershipAndRewards adminUid={user?.uid} subSection="memberships" />
         ) : activeTab === 'suspensions' ? (
           /* 4. USER & ORGANIZATION SUSPENSIONS VIEW */
           allPartnersAndOrgs.length === 0 ? (

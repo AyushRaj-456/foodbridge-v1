@@ -20,6 +20,7 @@ import {
   confirmDeliveryAgreement,
   transitionDeliveryStatus
 } from '../../services/deliveryService';
+import { processDonationCompletionRewards } from '../../services/rewardService';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
@@ -27,6 +28,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { Input } from '../../components/common/Input';
 import { DonationChatModal } from '../../components/chat/DonationChatModal';
 import { DeliveryRouteModal } from '../../components/map/DeliveryRouteModal';
+import { WalletView } from '../../components/wallet/WalletView';
 import {
   Utensils,
   Plus,
@@ -42,6 +44,7 @@ import {
   Building2,
   RefreshCw,
   Scale,
+  Coins,
   Phone,
   PackageCheck,
   MessageSquare,
@@ -160,6 +163,12 @@ export function DonorDashboardPage() {
         completedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      // Evaluate reward tokens for eligible participants
+      try {
+        await processDonationCompletionRewards(db, { ...listing, status: 'completed' });
+      } catch (rewErr) {
+        console.warn('Notice evaluating rewards for donor handover:', rewErr.message);
+      }
       setSuccessMsg(`Direct handover for "${listing.title}" confirmed! Redistribution completed.`);
       await fetchListings();
     } catch (err) {
@@ -352,6 +361,20 @@ export function DonorDashboardPage() {
             {historyListings.length}
           </span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('wallet')}
+          className={`px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors ${activeTab === 'wallet'
+            ? 'border-brand-800 text-brand-900'
+            : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Coins className="w-3.5 h-3.5 text-amber-600" />
+            <span>Wallet & Rewards</span>
+          </span>
+        </button>
       </div>
 
       {/* CONTENT AREA */}
@@ -360,6 +383,8 @@ export function DonorDashboardPage() {
           <div className="py-20 text-center text-stone-500 text-sm">
             Loading your listings...
           </div>
+        ) : activeTab === 'wallet' ? (
+          <WalletView role="donor" />
         ) : activeTab === 'active' ? (
           /* Active Listings List */
           activeListings.length === 0 ? (

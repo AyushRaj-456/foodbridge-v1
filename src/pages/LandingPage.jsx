@@ -372,30 +372,119 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* 5. COMMUNITY SUPPORT / VISITOR SECTION */}
-      <section className="bg-gradient-to-b from-transparent to-amber-50/40 py-12 border-t border-border/60">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-4">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-xs font-semibold">
-            <Coffee className="w-3.5 h-3.5 text-amber-700" />
-            <span>Community Support</span>
+      {/* 5. COMMUNITY SUPPORT & MEMBERSHIP SECTION */}
+      <section className="bg-gradient-to-b from-transparent to-amber-50/40 py-14 border-t border-border/60">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 space-y-8">
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-xs font-semibold">
+              <Coffee className="w-3.5 h-3.5 text-amber-700" />
+              <span>Community Support & Membership</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
+              Support FoodBridge With a Voluntary Contribution
+            </h2>
+            <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+              Voluntary contributions keep zero-waste food rescue active in Karnataka. Memberships enable token earnings and redemptions for Donors and verified NGOs.
+            </p>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-            Support FoodBridge With a Voluntary Contribution
-          </h2>
-          <p className="text-xs sm:text-sm text-stone-600 max-w-xl mx-auto leading-relaxed">
-            Not a food donor or recipient? You can still support zero-waste food rescue in Karnataka through voluntary contributions or by exploring in Visitor mode.
-          </p>
-          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-            <Link to="/support">
-              <Button variant="primary" size="md">
-                <Coffee className="w-4 h-4 mr-1.5" />
-                Buy Us a Coffee
-              </Button>
-            </Link>
-            <Link to="/signin">
-              <Button variant="outline" size="md">
-                Join as a Visitor
-              </Button>
+
+          {/* 3 Support Plans Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Plan A: Buy Us a Coffee */}
+            <Card className="p-6 flex flex-col justify-between border-stone-200 hover:border-amber-300 transition-all bg-white shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-800 flex items-center justify-center border border-amber-200">
+                    <Coffee className="w-5 h-5" />
+                  </div>
+                  <Badge variant="outline" className="border-stone-300 text-stone-700 text-[10px]">
+                    One-Time Support
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base">Buy Us a Coffee</h3>
+                  <div className="text-2xl font-black text-stone-900 font-mono mt-1">₹50</div>
+                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
+                    A warm gesture supporting community volunteers. No membership or token earning benefits.
+                  </p>
+                </div>
+              </div>
+              <div className="pt-5 mt-4 border-t border-border">
+                <Link to="/support" className="block w-full">
+                  <Button variant="outline" size="sm" className="w-full justify-center">
+                    Contribute ₹50
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+
+            {/* Plan B: Fuel Support */}
+            <Card className="p-6 flex flex-col justify-between border-emerald-300 ring-1 ring-emerald-500/20 bg-emerald-50/20 shadow-sm relative overflow-hidden">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center border border-emerald-200">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <Badge variant="active" size="sm" className="text-[10px]">
+                    30-Day Membership
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base">Fuel Support</h3>
+                  <div className="text-2xl font-black text-stone-900 font-mono mt-1">₹100</div>
+                  <p className="text-xs text-stone-600 mt-2 leading-relaxed">
+                    Activates a 30-day membership. Earn 10 tokens (Donor) or 5 tokens (NGO) on completed handovers.
+                  </p>
+                  <div className="mt-3 p-2.5 rounded-lg bg-emerald-100/60 border border-emerald-200 text-[11px] font-semibold text-emerald-900">
+                    Redemption Rate: ₹2 per 100 tokens
+                  </div>
+                </div>
+              </div>
+              <div className="pt-5 mt-4 border-t border-emerald-200/80">
+                <Link to="/support" className="block w-full">
+                  <Button variant="primary" size="sm" className="w-full justify-center">
+                    Join for ₹100
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+
+            {/* Plan C: Corridor Help */}
+            <Card className="p-6 flex flex-col justify-between border-brand-300 bg-brand-50/20 shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-brand-100 text-brand-900 flex items-center justify-center border border-brand-200">
+                    <HeartHandshake className="w-5 h-5" />
+                  </div>
+                  <Badge variant="outline" className="border-brand-300 text-brand-900 bg-brand-50 text-[10px]">
+                    30-Day Membership
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base">Corridor Help</h3>
+                  <div className="text-2xl font-black text-stone-900 font-mono mt-1">₹250</div>
+                  <p className="text-xs text-stone-600 mt-2 leading-relaxed">
+                    Assists regional redistribution logistics. Earn tokens on handovers with maximum redemption value.
+                  </p>
+                  <div className="mt-3 p-2.5 rounded-lg bg-brand-100/60 border border-brand-200 text-[11px] font-semibold text-brand-950">
+                    Redemption Rate: ₹6 per 100 tokens
+                  </div>
+                </div>
+              </div>
+              <div className="pt-5 mt-4 border-t border-brand-200/80">
+                <Link to="/support" className="block w-full">
+                  <Button variant="primary" size="sm" className="w-full justify-center">
+                    Join for ₹250
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          </div>
+
+          <div className="pt-2 text-center text-xs text-stone-500">
+            <span>Voluntary contributions support logistics across Karnataka. </span>
+            <Link to="/support" className="text-brand-800 font-semibold underline hover:text-brand-900">
+              Learn more about member benefits and simulated demo checkout &rarr;
             </Link>
           </div>
         </div>

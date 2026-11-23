@@ -213,5 +213,50 @@ service cloud.firestore {
         allow read, write: if isAuthenticated();
       }
     }
+
+    // 10. Support Memberships
+    match /memberships/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create, update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 11. Support Contribution Transactions (Immutable)
+    match /supportTransactions/{txId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // 12. User Wallets
+    match /wallets/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // 13. Reward Ledger (Plan-Based Batches)
+    match /rewardLedger/{batchId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    // 14. Token Redemption Requests
+    match /redemptionRequests/{requestId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // 15. Daily Platform & Pair Limits
+    match /dailyRewardCounters/{dateIST} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /dailyPairRewardCounters/{pairKey} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

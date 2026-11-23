@@ -15,6 +15,7 @@ import {
 import { addDeliveryPartnerToConversation, sendChatMessage } from './chatService';
 import { sendInAppNotification } from './notificationService';
 import { calculateRouteAndFare } from './routingService';
+import { processDonationCompletionRewards } from './rewardService';
 
 export const DELIVERY_STATUSES = {
   PENDING_AGREEMENT: 'pending_agreement',
@@ -533,6 +534,18 @@ export async function transitionDeliveryStatus(db, deliveryId, targetStatus, act
             type: 'status',
             donationId: listingId
           });
+        }
+
+        // Trigger Reward System for eligible Donor and NGO
+        if (listingId) {
+          try {
+            const listSnap = await getDoc(doc(db, 'listings', listingId));
+            if (listSnap.exists()) {
+              await processDonationCompletionRewards(db, { id: listingId, ...listSnap.data() });
+            }
+          } catch (rewErr) {
+            console.warn('Notice evaluating rewards for completed delivery:', rewErr.message);
+          }
         }
       } catch (e) {}
     }
