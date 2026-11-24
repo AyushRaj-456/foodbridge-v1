@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useLocale } from '../../context/LocaleContext';
 import { calculateRouteAndFare } from '../../services/routingService';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
@@ -20,6 +21,7 @@ export function DeliveryRouteModal({
   donation,
   onClose
 }) {
+  const { t } = useLocale();
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -175,14 +177,14 @@ export function DeliveryRouteModal({
         {/* Stats Pill Bar */}
         <div className="p-3 bg-brand-50/50 border-b border-brand-100 grid grid-cols-3 gap-2 text-center text-xs">
           <div className="p-2 rounded-lg bg-white border border-brand-200/60 shadow-xs">
-            <span className="text-[10px] uppercase font-bold text-stone-500 block">Driving Distance</span>
+            <span className="text-[10px] uppercase font-bold text-stone-500 block">{t('map.distance', 'Driving Distance')}</span>
             <span className="font-extrabold text-brand-900 text-sm sm:text-base font-mono">
               {routeData?.distanceKm || '--'} km
             </span>
           </div>
 
           <div className="p-2 rounded-lg bg-white border border-brand-200/60 shadow-xs">
-            <span className="text-[10px] uppercase font-bold text-stone-500 block">Est. Travel Time</span>
+            <span className="text-[10px] uppercase font-bold text-stone-500 block">{t('map.eta', 'Est. Travel Time')}</span>
             <span className="font-extrabold text-stone-900 text-sm sm:text-base font-mono">
               ~{routeData?.durationMin || '--'} mins
             </span>
@@ -216,7 +218,7 @@ export function DeliveryRouteModal({
           <div className="p-3 rounded-xl bg-surface-muted border border-border">
             <div className="flex items-center gap-1.5 font-bold text-emerald-900 mb-1">
               <Utensils className="w-3.5 h-3.5 text-emerald-700" />
-              <span>1. Donor Pickup</span>
+              <span>{t('map.pickup', 'Donor Pickup')}</span>
             </div>
             <p className="text-stone-700 font-medium line-clamp-2">{pickupAddress}</p>
             {donation?.donorName && (
@@ -227,7 +229,7 @@ export function DeliveryRouteModal({
           <div className="p-3 rounded-xl bg-surface-muted border border-border">
             <div className="flex items-center gap-1.5 font-bold text-sky-900 mb-1">
               <Building2 className="w-3.5 h-3.5 text-sky-700" />
-              <span>2. Recipient Dropoff</span>
+              <span>{t('map.dropoff', 'Recipient Dropoff')}</span>
             </div>
             <p className="text-stone-700 font-medium line-clamp-2">{dropAddress}</p>
             {donation?.acceptedRecipientName && (

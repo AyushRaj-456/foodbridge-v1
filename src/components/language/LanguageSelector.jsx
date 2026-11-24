@@ -1,9 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocale } from '../../context/LocaleContext';
+import { useAuth } from '../../context/AuthContext';
+import { db, doc, setDoc } from '../../services/firebase';
 import { Globe, ChevronDown, Check } from 'lucide-react';
 
 export function LanguageSelector({ variant = 'default', className = '' }) {
   const { locale, setLocale, supportedLocales } = useLocale();
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -19,9 +22,16 @@ export function LanguageSelector({ variant = 'default', className = '' }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelect = (code) => {
+  const handleSelect = async (code) => {
     setLocale(code);
     setIsOpen(false);
+    if (user?.uid) {
+      try {
+        await setDoc(doc(db, 'users', user.uid), { preferredLocale: code }, { merge: true });
+      } catch (err) {
+        // Silent failure if offline or firestore unavailable
+      }
+    }
   };
 
   return (

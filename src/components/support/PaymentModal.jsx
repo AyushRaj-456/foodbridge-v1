@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useLocale } from '../../context/LocaleContext';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { getPlanById } from '../../config/membershipConfig';
@@ -44,6 +45,7 @@ export function PaymentModal({
   onSuccess
 }) {
   const { user, userDoc, profileData } = useAuth();
+  const { t, formatCurrency } = useLocale();
   const plan = getPlanById(planId);
 
   // Existing membership status for stacking preview
@@ -205,12 +207,12 @@ export function PaymentModal({
             <div>
               <h3 className="font-bold text-stone-900 text-base leading-tight">
                 {paymentState === 'success'
-                  ? 'Payment Confirmation'
+                  ? t('payment.successHeading', 'Payment Confirmation')
                   : paymentState === 'failed'
-                  ? 'Payment Declined'
+                  ? t('payment.failedHeading', 'Payment Declined')
                   : paymentState === 'cancelled'
-                  ? 'Checkout Cancelled'
-                  : 'FoodBridge Secure Checkout'}
+                  ? t('payment.cancel', 'Checkout Cancelled')
+                  : t('payment.modalTitle', 'FoodBridge Secure Checkout')}
               </h3>
               <p className="text-[11px] text-stone-500">
                 Karnataka Food Redistribution Network • Demo Sandbox
@@ -234,7 +236,7 @@ export function PaymentModal({
           <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-950 space-y-1">
             <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
               <ShieldCheck className="w-4 h-4 text-amber-700 flex-shrink-0" />
-              <span>SIMULATED DEMO PAYMENT — NO REAL MONEY CHARGED</span>
+              <span>{t('payment.demoWarning', 'SIMULATED DEMO PAYMENT — NO REAL MONEY CHARGED')}</span>
             </div>
             <p className="text-[11px] text-amber-800 leading-relaxed">
               This is a test checkout simulation for FoodBridge. No financial transaction takes place. Card numbers, CVVs, and passwords are dummy inputs and are never recorded or stored.
@@ -248,7 +250,7 @@ export function PaymentModal({
                 <Loader2 className="w-8 h-8 animate-spin text-brand-800" />
               </div>
               <div className="space-y-1">
-                <h4 className="text-base font-bold text-stone-900">Processing Simulated Transaction</h4>
+                <h4 className="text-base font-bold text-stone-900">{t('payment.processing', 'Processing Simulated Transaction')}</h4>
                 <p className="text-stone-500 text-xs font-mono">{processingStep}</p>
               </div>
               <p className="text-[11px] text-stone-400 max-w-xs mx-auto">
@@ -436,7 +438,7 @@ export function PaymentModal({
               {/* Payment Method Selector Tabs */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-stone-800 block">
-                  Select Simulated Payment Method
+                  {t('payment.method', 'Select Simulated Payment Method')}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -449,7 +451,7 @@ export function PaymentModal({
                     }`}
                   >
                     <CreditCard className="w-4 h-4 text-brand-800" />
-                    <span className="text-[11px]">Card</span>
+                    <span className="text-[11px]">{t('payment.card', 'Card')}</span>
                   </button>
 
                   <button
@@ -462,7 +464,7 @@ export function PaymentModal({
                     }`}
                   >
                     <Smartphone className="w-4 h-4 text-brand-800" />
-                    <span className="text-[11px]">UPI</span>
+                    <span className="text-[11px]">{t('payment.upi', 'UPI')}</span>
                   </button>
 
                   <button
@@ -475,7 +477,7 @@ export function PaymentModal({
                     }`}
                   >
                     <Building2 className="w-4 h-4 text-brand-800" />
-                    <span className="text-[11px]">Net Banking</span>
+                    <span className="text-[11px]">{t('payment.netBanking', 'Net Banking')}</span>
                   </button>
                 </div>
               </div>
@@ -486,7 +488,7 @@ export function PaymentModal({
                   <div className="space-y-2.5">
                     <div>
                       <label className="text-[10px] font-bold text-stone-700 uppercase tracking-wider block mb-1">
-                        Cardholder Name
+                        {t('payment.cardholderName', 'Cardholder Name')}
                       </label>
                       <input
                         type="text"
@@ -498,7 +500,7 @@ export function PaymentModal({
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-stone-700 uppercase tracking-wider block mb-1">
-                        Card Number (Demo)
+                        {t('payment.cardNumber', 'Card Number (Demo)')}
                       </label>
                       <div className="relative">
                         <input
@@ -516,7 +518,7 @@ export function PaymentModal({
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] font-bold text-stone-700 uppercase tracking-wider block mb-1">
-                          Expiry Date
+                          {t('payment.expiry', 'Expiry Date')}
                         </label>
                         <input
                           type="text"
@@ -528,7 +530,7 @@ export function PaymentModal({
                       </div>
                       <div>
                         <label className="text-[10px] font-bold text-stone-700 uppercase tracking-wider block mb-1">
-                          CVV (Simulated)
+                          {t('payment.cvv', 'CVV (Simulated)')}
                         </label>
                         <input
                           type="password"
@@ -547,7 +549,7 @@ export function PaymentModal({
                   <div className="space-y-2.5">
                     <div>
                       <label className="text-[10px] font-bold text-stone-700 uppercase tracking-wider block mb-1">
-                        Virtual Payment Address / UPI ID
+                        {t('payment.upiId', 'Virtual Payment Address / UPI ID')}
                       </label>
                       <input
                         type="text"
@@ -577,7 +579,7 @@ export function PaymentModal({
                   <div className="space-y-2.5">
                     <div>
                       <label className="text-[10px] font-bold text-stone-700 uppercase tracking-wider block mb-1">
-                        Select Bank
+                        {t('payment.selectBank', 'Select Bank')}
                       </label>
                       <select
                         value={selectedBank}
@@ -619,7 +621,11 @@ export function PaymentModal({
                   onClick={() => executePaymentSimulation('completed')}
                 >
                   <Lock className="w-4 h-4 mr-1.5" />
-                  <span>{isDemoMode ? `Pay ₹${plan.amount} (Simulate Success)` : `Pay ₹${plan.amount}`}</span>
+                  <span>
+                    {isDemoMode
+                      ? `${t('payment.completePayment', { amount: plan.amount }, `Pay ₹${plan.amount}`)} (Simulate)`
+                      : t('payment.completePayment', { amount: plan.amount }, `Pay ₹${plan.amount}`)}
+                  </span>
                 </Button>
 
                 {isDemoMode ? (
@@ -629,14 +635,14 @@ export function PaymentModal({
                       onClick={() => executePaymentSimulation('failed', 'Simulated card authorization decline')}
                       className="w-full py-2 px-3 rounded-lg border border-red-200 bg-red-50/50 hover:bg-red-100/60 text-red-800 text-[11px] font-medium transition-colors"
                     >
-                      Simulate Failed Payment
+                      {t('payment.failedHeading', 'Simulate Failed Payment')}
                     </button>
                     <button
                       type="button"
                       onClick={handleCancelPayment}
                       className="w-full py-2 px-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-[11px] font-medium transition-colors"
                     >
-                      Cancel Checkout
+                      {t('payment.cancel', 'Cancel Checkout')}
                     </button>
                   </div>
                 ) : (
@@ -645,7 +651,7 @@ export function PaymentModal({
                     onClick={onClose}
                     className="w-full py-2 px-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-xs font-medium transition-colors"
                   >
-                    Cancel
+                    {t('common.cancel', 'Cancel')}
                   </button>
                 )}
               </div>

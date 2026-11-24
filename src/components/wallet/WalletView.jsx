@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useLocale } from '../../context/LocaleContext';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
@@ -44,6 +45,7 @@ import {
 
 export function WalletView({ role = 'donor', onNavigateToHistory }) {
   const { user, userDoc, isAdmin } = useAuth();
+  const { t, formatDate, formatCurrency } = useLocale();
 
   const [wallet, setWallet] = useState(null);
   const [redemptions, setRedemptions] = useState([]);
@@ -376,7 +378,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-border/80 pb-4">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wider text-brand-800 block mb-1">
-                Support Membership Overview
+                {t('wallet.title', 'Support Membership Overview')}
               </span>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-stone-900">
@@ -387,26 +389,26 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                 {isMemberActive ? (
                   activePeriod?.isCancelled || membership?.isCancelled ? (
                     <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300 shadow-sm">
-                      NON-RENEWING
+                      {t('wallet.nonRenewingNotice', 'NON-RENEWING')}
                     </span>
                   ) : (
                     <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-sm">
-                      ACTIVE
+                      {t('common.status.active', 'ACTIVE')}
                     </span>
                   )
                 ) : nextUpcomingPass ? (
                   <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-brand-100 text-brand-900 border border-brand-300 shadow-sm">
-                    SCHEDULED
+                    {t('common.status.scheduled', 'SCHEDULED')}
                   </span>
                 ) : (
                   <span className="inline-flex items-center text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-800 border border-stone-300 shadow-sm">
-                    INACTIVE
+                    {t('common.status.inactive', 'INACTIVE')}
                   </span>
                 )}
 
                 {activeDemoMode && (
                   <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100 text-amber-950 border border-amber-300">
-                    TESTING MODE
+                    {t('wallet.testingMode', 'TESTING MODE')}
                   </span>
                 )}
               </div>
@@ -440,7 +442,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                 title="Refresh balance and periods"
               >
                 <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
+                <span>{t('wallet.refreshBtn', 'Refresh')}</span>
               </Button>
 
               {/* Primary Action Button */}
@@ -451,7 +453,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                 onClick={() => setShowPaymentModal(true)}
               >
                 <CreditCard className="w-3.5 h-3.5 mr-1.5" />
-                <span>{isMemberActive ? 'Add 30-Day Pass (Stack)' : 'Join Support Membership'}</span>
+                <span>{isMemberActive ? t('wallet.addPassBtn', 'Add 30-Day Pass (Stack)') : t('wallet.joinMembershipBtn', 'Join Support Membership')}</span>
               </Button>
             </div>
           </div>
@@ -463,7 +465,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-brand-800">
-                    A. Current Active Pass
+                    {t('wallet.currentPass', 'Current Active Pass')}
                   </span>
                   <Clock className="w-3.5 h-3.5 text-brand-700" />
                 </div>
@@ -471,15 +473,14 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                 {isMemberActive ? (
                   <div className="space-y-1">
                     <div className="text-xl font-extrabold text-stone-900 flex items-baseline gap-1.5">
-                      <span>{currentPassDaysRemaining} Days</span>
-                      <span className="text-xs text-stone-600 font-medium">remaining</span>
+                      <span>{t('wallet.daysRemaining', { count: currentPassDaysRemaining }, `${currentPassDaysRemaining} Days remaining`)}</span>
                     </div>
                     <p className="text-xs text-stone-800 font-mono font-medium">
-                      {activePeriod?.sDate ? activePeriod.sDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Active'} →{' '}
-                      {activePeriod?.eDate ? activePeriod.eDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '30-Day Cycle'}
+                      {activePeriod?.sDate ? formatDate(activePeriod.sDate) : 'Active'} →{' '}
+                      {activePeriod?.eDate ? formatDate(activePeriod.eDate) : '30-Day Cycle'}
                     </p>
                     <p className="text-xs text-brand-800 font-semibold pt-1">
-                      Rate: ₹{currentRewardRate} / 100 tokens (10 tokens per 2 kg donated)
+                      {t('wallet.ratePer100', { rate: currentRewardRate }, `Rate: ₹${currentRewardRate} / 100 tokens`)}
                     </p>
                   </div>
                 ) : nextUpcomingPass ? (
@@ -488,7 +489,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                     <p className="text-xs text-stone-700">
                       Previous pass completed. Next pass activates on{' '}
                       <strong className="text-stone-900">
-                        {nextUpcomingPass.sDate ? nextUpcomingPass.sDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'scheduled date'}
+                        {nextUpcomingPass.sDate ? formatDate(nextUpcomingPass.sDate) : 'scheduled date'}
                       </strong>.
                     </p>
                   </div>
@@ -508,7 +509,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                   onClick={() => setCancellingPeriod(activePeriod)}
                   className="text-xs text-red-700 hover:text-red-900 text-left underline font-medium transition-colors pt-1"
                 >
-                  {activeDemoMode ? 'Cancel active pass (simulation)' : 'Cancel active pass'}
+                  {activeDemoMode ? `${t('wallet.cancelPassBtn', 'Cancel active pass')} (sim)` : t('wallet.cancelPassBtn', 'Cancel active pass')}
                 </button>
               )}
             </div>
@@ -518,7 +519,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-stone-700">
-                    B. Upcoming Memberships
+                    {t('wallet.upcomingPasses', 'Upcoming Memberships')}
                   </span>
                   <Layers className="w-3.5 h-3.5 text-stone-600" />
                 </div>
@@ -526,16 +527,16 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                 {upcomingPeriods.length > 0 ? (
                   <div className="space-y-1">
                     <div className="text-xl font-extrabold text-stone-900 flex items-baseline gap-1.5">
-                      <span>{upcomingPeriods.length} Queued Pass{upcomingPeriods.length > 1 ? 'es' : ''}</span>
+                      <span>{t('wallet.queuedPasses', { count: upcomingPeriods.length }, `${upcomingPeriods.length} Queued Passes`)}</span>
                     </div>
                     <div className="text-xs text-stone-900 font-bold">
                       Queue #1: {nextUpcomingPass.planName}
                     </div>
                     <p className="text-xs text-stone-700 font-mono">
-                      Starts: {nextUpcomingPass.sDate ? nextUpcomingPass.sDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Scheduled'}
+                      Starts: {nextUpcomingPass.sDate ? formatDate(nextUpcomingPass.sDate) : 'Scheduled'}
                     </p>
                     <p className="text-xs text-stone-600">
-                      Expires: {nextUpcomingPass.eDate ? nextUpcomingPass.eDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Scheduled'}
+                      Expires: {nextUpcomingPass.eDate ? formatDate(nextUpcomingPass.eDate) : 'Scheduled'}
                     </p>
                   </div>
                 ) : (
@@ -562,7 +563,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-brand-900">
-                    C. Total Coverage
+                    {t('wallet.totalCoverage', 'Total Coverage')}
                   </span>
                   <ShieldCheck className="w-3.5 h-3.5 text-brand-800" />
                 </div>
@@ -574,10 +575,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                   </div>
                   {totalCoverageExpiry && totalCoverageDays > 0 ? (
                     <p className="text-xs text-brand-900 font-medium">
-                      Coverage valid through{' '}
-                      <strong className="text-stone-900">
-                        {totalCoverageExpiry.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </strong>
+                      {t('wallet.coverageUntil', { date: formatDate(totalCoverageExpiry) }, `Coverage valid through ${formatDate(totalCoverageExpiry)}`)}
                     </p>
                   ) : (
                     <p className="text-xs text-stone-600">No scheduled membership coverage.</p>
@@ -607,26 +605,26 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
         {/* Available Tokens */}
         <Card className="p-3.5 sm:p-4 border-emerald-300 bg-white shadow-sm">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">Available Tokens</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">{t('wallet.availableTokens', 'Available Tokens')}</span>
           <div className="text-xl sm:text-2xl font-extrabold text-emerald-900 font-mono mt-1">
             {availableTokens}
           </div>
-          <span className="text-xs text-emerald-800 font-medium block mt-0.5">Ready to redeem</span>
+          <span className="text-xs text-emerald-800 font-medium block mt-0.5">{t('wallet.readyForRedemption', 'Ready to redeem')}</span>
         </Card>
 
         {/* Est. Redeemable Value */}
         <Card className="p-3.5 sm:p-4 border-brand-300 bg-white shadow-sm">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">Redeemable Value</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">{t('wallet.estRedeemableValue', 'Redeemable Value')}</span>
           <div className="text-xl sm:text-2xl font-extrabold text-brand-900 font-mono mt-1">
             ₹{wallet?.estimatedRedeemableValue || 0}
           </div>
-          <span className="text-xs text-brand-800 font-medium block mt-0.5">Plan FIFO rate</span>
+          <span className="text-xs text-brand-800 font-medium block mt-0.5">{t('wallet.fifoValuation', 'Plan FIFO rate')}</span>
         </Card>
 
         {/* Total Support Spent */}
         <Card className="p-3.5 sm:p-4 border-border bg-white shadow-sm">
           <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">
-            {activeDemoMode ? 'Total Demo Spent' : 'Total Contributions'}
+            {activeDemoMode ? 'Total Demo Spent' : t('wallet.totalSpent', 'Total Contributions')}
           </span>
           <div className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono mt-1">
             ₹{totalSpentAll}
@@ -638,7 +636,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
 
         {/* Membership Passes */}
         <Card className="p-3.5 sm:p-4 border-border bg-white shadow-sm">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">Membership Passes</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">{t('wallet.stackedPasses', 'Membership Passes')}</span>
           <div className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono mt-1">
             {membershipTxns.length}
           </div>
@@ -665,12 +663,12 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
 
         {/* Total Coverage */}
         <Card className="p-3.5 sm:p-4 border-brand-200 bg-white shadow-sm">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">Total Coverage</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">{t('wallet.totalCoverage', 'Total Coverage')}</span>
           <div className="text-xl sm:text-2xl font-extrabold text-brand-900 font-mono mt-1">
             {totalCoverageDays}d
           </div>
-          <span className="text-xs text-stone-600 font-medium block mt-0.5 truncate" title={totalCoverageExpiry ? totalCoverageExpiry.toLocaleDateString() : 'None'}>
-            {totalCoverageExpiry ? `Until ${totalCoverageExpiry.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : 'No coverage'}
+          <span className="text-xs text-stone-600 font-medium block mt-0.5 truncate" title={totalCoverageExpiry ? formatDate(totalCoverageExpiry) : 'None'}>
+            {totalCoverageExpiry ? `Until ${formatDate(totalCoverageExpiry)}` : 'No coverage'}
           </span>
         </Card>
       </div>
@@ -680,7 +678,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
         <div>
           <h4 className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
             <Coins className="w-4 h-4 text-brand-800" />
-            <span>Redeem Tokens for Monetary Rewards</span>
+            <span>{t('wallet.redeemTokensBtn', 'Redeem Tokens for Monetary Rewards')}</span>
           </h4>
           <p className="text-xs text-stone-700 mt-0.5 leading-relaxed">
             {isMemberActive
@@ -698,7 +696,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
             className="w-full sm:w-auto justify-center bg-brand-800 hover:bg-brand-700 text-white font-semibold text-xs px-4 py-2 rounded-xl shadow-sm border-none"
           >
             <Coins className="w-4 h-4 mr-1.5" />
-            <span>Redeem Tokens</span>
+            <span>{t('wallet.redeemTokensBtn', 'Redeem Tokens')}</span>
           </Button>
         </div>
       </div>
@@ -717,7 +715,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               }`}
             >
               <Calendar className="w-3.5 h-3.5" />
-              <span>Membership Schedule ({membershipPeriods.length})</span>
+              <span>{t('wallet.tabSchedule', { count: membershipPeriods.length }, `Membership Schedule (${membershipPeriods.length})`)}</span>
             </button>
             <button
               type="button"
@@ -729,7 +727,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               }`}
             >
               <History className="w-3.5 h-3.5" />
-              <span>Payment History ({supportTxns.length})</span>
+              <span>{t('wallet.tabContributions', { count: supportTxns.length }, `Payment History (${supportTxns.length})`)}</span>
             </button>
             <button
               type="button"
@@ -741,7 +739,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               }`}
             >
               <Coins className="w-3.5 h-3.5" />
-              <span>Reward Ledger ({batches.length})</span>
+              <span>{t('wallet.tabBatches', { count: batches.length }, `Reward Ledger (${batches.length})`)}</span>
             </button>
             <button
               type="button"
@@ -753,7 +751,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               }`}
             >
               <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>Redemptions ({redemptions.length})</span>
+              <span>{t('wallet.tabRedemptions', { count: redemptions.length }, `Redemptions (${redemptions.length})`)}</span>
             </button>
           </div>
 
@@ -1249,33 +1247,28 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               {batches.length === 0 ? (
                 <div className="py-10 text-center text-xs text-stone-600 space-y-1">
                   <Coins className="w-8 h-8 text-stone-400 mx-auto" />
-                  <p className="font-bold text-stone-800 text-sm">No reward tokens recorded yet</p>
-                  <p className="text-xs text-stone-600">Complete verified food donation handovers to earn tokens.</p>
+                  <p className="font-bold text-stone-800 text-sm">{t('wallet.noBatches', 'No reward tokens recorded yet')}</p>
+                  <p className="text-xs text-stone-600">{t('wallet.noBatchesDesc', 'Complete verified food donation handovers to earn tokens.')}</p>
                 </div>
               ) : (
                 <table className="w-full text-xs text-left">
                   <thead className="bg-stone-100 text-stone-800 text-[11px] font-bold uppercase tracking-wider border-b border-border">
                     <tr>
-                      <th className="py-2.5 px-3">Date & Time</th>
-                      <th className="py-2.5 px-3">Listing Reference</th>
+                      <th className="py-2.5 px-3">{t('wallet.dateCol', 'Date & Time')}</th>
+                      <th className="py-2.5 px-3">{t('wallet.donationCol', 'Listing Reference')}</th>
                       <th className="py-2.5 px-3 text-right">Quantity</th>
-                      <th className="py-2.5 px-3 text-right">Tokens</th>
-                      <th className="py-2.5 px-3">Plan & Rate</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3 text-right">Remaining</th>
-                      <th className="py-2.5 px-3 text-right">Est. Value</th>
-                      <th className="py-2.5 px-3 text-center">Action</th>
+                      <th className="py-2.5 px-3 text-right">{t('wallet.earnedCol', 'Tokens')}</th>
+                      <th className="py-2.5 px-3">{t('wallet.planCol', 'Plan & Rate')}</th>
+                      <th className="py-2.5 px-3">{t('wallet.statusCol', 'Status')}</th>
+                      <th className="py-2.5 px-3 text-right">{t('wallet.remainingCol', 'Remaining')}</th>
+                      <th className="py-2.5 px-3 text-right">{t('wallet.valueCol', 'Est. Value')}</th>
+                      <th className="py-2.5 px-3 text-center">{t('wallet.actionCol', 'Action')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {batches.map((b) => {
                       const dateStr = b.timestampMs
-                        ? new Date(b.timestampMs).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })
+                        ? formatDate(new Date(b.timestampMs))
                         : '—';
                       const value = Math.round((b.remainingTokens || 0) * (b.redemptionRate || 0) * 100) / 100;
                       const qtyDisplay = b.foodQuantityKg != null ? `${b.foodQuantityKg} kg` : '—';
@@ -1311,7 +1304,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                           </td>
                           <td className="py-2.5 px-3">
                             <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300">
-                              Credited
+                              {t('wallet.creditedBadge', 'Credited')}
                             </span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-extrabold text-stone-900">
@@ -1327,7 +1320,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                               className="text-[11px] px-2.5 py-1 h-auto text-brand-900 border-stone-300 hover:bg-brand-50"
                               onClick={() => setSelectedBatchDetails(b)}
                             >
-                              Inspect
+                              {t('wallet.inspectBtn', 'Inspect')}
                             </Button>
                           </td>
                         </tr>
@@ -1541,7 +1534,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               <div>
                 <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-900 border border-emerald-200 text-[10px] font-bold uppercase tracking-wider mb-1">
                   <ShieldCheck className="w-3 h-3 text-emerald-700" />
-                  <span>Verified Reward Transaction</span>
+                  <span>{t('wallet.traceabilityTitle', 'Verified Reward Transaction')}</span>
                 </div>
                 <h3 className="text-base font-bold text-stone-900">
                   {selectedBatchDetails.donationTitle || 'Completed Donation Reward'}
@@ -1560,7 +1553,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-stone-50 border border-border">
                 <div>
                   <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wide block">
-                    Listing Reference
+                    {t('wallet.listingRef', 'Listing Reference')}
                   </span>
                   <span className="font-mono font-bold text-stone-900 text-xs">
                     {selectedBatchDetails.listingId || selectedBatchDetails.donationId || 'FB-DONATION'}
@@ -1568,7 +1561,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                 </div>
                 <div>
                   <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wide block">
-                    Food Quantity Donated
+                    {t('wallet.foodQtyDonated', 'Food Quantity Donated')}
                   </span>
                   <span className="font-mono font-bold text-stone-900 text-xs">
                     {selectedBatchDetails.foodQuantityKg != null ? `${selectedBatchDetails.foodQuantityKg} kg` : 'Recorded Handover'}
@@ -1576,7 +1569,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                 </div>
                 <div>
                   <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wide block">
-                    Tokens Credited
+                    {t('wallet.tokensCredited', 'Tokens Credited')}
                   </span>
                   <span className="font-mono font-black text-emerald-900 text-sm">
                     +{selectedBatchDetails.tokensEarned} tokens
@@ -1587,7 +1580,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                     Transaction Status
                   </span>
                   <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 mt-0.5">
-                    Credited
+                    {t('wallet.creditedBadge', 'Credited')}
                   </span>
                 </div>
               </div>
@@ -1611,19 +1604,19 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
               {/* Plan Valuation Details */}
               <div className="space-y-1.5 pt-1">
                 <div className="flex justify-between py-1 border-b border-border/60">
-                  <span className="text-stone-600">Plan at Earning:</span>
+                  <span className="text-stone-600">{t('wallet.planAtEarning', 'Plan at Earning')}:</span>
                   <span className="font-semibold text-stone-900">
                     {selectedBatchDetails.planNameAtEarning || selectedBatchDetails.planAtEarning || 'Fuel Support'}
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-border/60">
-                  <span className="text-stone-600">Applicable Redemption Rate:</span>
+                  <span className="text-stone-600">{t('wallet.redemptionRate', 'Applicable Redemption Rate')}:</span>
                   <span className="font-mono font-semibold text-stone-900">
                     ₹{selectedBatchDetails.redemptionRatePer100 || (selectedBatchDetails.redemptionRate * 100)} per 100 tokens
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-border/60">
-                  <span className="text-stone-600">Remaining in Batch:</span>
+                  <span className="text-stone-600">{t('wallet.remainingTokens', 'Remaining in Batch')}:</span>
                   <span className="font-mono font-bold text-stone-900">
                     {selectedBatchDetails.remainingTokens} tokens
                   </span>
@@ -1638,7 +1631,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                   <span className="text-stone-600">Timestamp:</span>
                   <span className="font-mono text-stone-700">
                     {selectedBatchDetails.timestampMs
-                      ? new Date(selectedBatchDetails.timestampMs).toLocaleString('en-IN')
+                      ? formatDate(new Date(selectedBatchDetails.timestampMs))
                       : 'Recorded'}
                   </span>
                 </div>
@@ -1657,7 +1650,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                   }}
                 >
                   <History className="w-3.5 h-3.5 mr-1 text-stone-600" />
-                  <span>View in Donation History</span>
+                  <span>{t('wallet.viewInHistory', 'View in Donation History')}</span>
                 </Button>
               )}
               <Button
@@ -1666,7 +1659,7 @@ export function WalletView({ role = 'donor', onNavigateToHistory }) {
                 className="bg-brand-800 hover:bg-brand-700 text-white text-xs font-semibold px-4"
                 onClick={() => setSelectedBatchDetails(null)}
               >
-                Close
+                {t('common.close', 'Close')}
               </Button>
             </div>
           </div>

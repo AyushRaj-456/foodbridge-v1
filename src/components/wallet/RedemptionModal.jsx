@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocale } from '../../context/LocaleContext';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { Card } from '../common/Card';
@@ -19,6 +20,7 @@ export function RedemptionModal({
   onClose,
   onSuccess
 }) {
+  const { t } = useLocale();
   const [tokensToRedeem, setTokensToRedeem] = useState(100);
   const [upiId, setUpiId] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -124,10 +126,10 @@ export function RedemptionModal({
             </div>
             <div>
               <h3 className="font-bold text-stone-900 text-base leading-tight">
-                {successResult ? 'Redemption Submitted' : 'Redeem Reward Tokens'}
+                {successResult ? 'Redemption Submitted' : t('redemption.title', 'Redeem Reward Tokens')}
               </h3>
               <p className="text-[11px] text-stone-500">
-                {successResult ? 'Request pending administrative review' : 'Plan-based monetary reward payout'}
+                {successResult ? 'Request pending administrative review' : t('redemption.description', 'Plan-based monetary reward payout')}
               </p>
             </div>
           </div>
@@ -193,14 +195,14 @@ export function RedemptionModal({
             <form onSubmit={handleRedeemSubmit} className="space-y-5">
               {/* Available balance notice */}
               <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs flex items-center justify-between">
-                <span className="text-emerald-950 font-medium">Available for Redemption:</span>
+                <span className="text-emerald-950 font-medium">{t('wallet.readyForRedemption', 'Available for Redemption')}:</span>
                 <span className="font-mono font-bold text-emerald-900 text-sm">{availableTokens} Tokens</span>
               </div>
 
               {/* Tokens selection */}
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-stone-700 flex justify-between">
-                  <span>Select Tokens to Redeem (Multiples of 100)</span>
+                  <span>{t('redemption.tokensToRedeem', 'Select Tokens to Redeem (Multiples of 100)')}</span>
                   <span className="text-stone-500 font-normal">Min 100 tokens</span>
                 </label>
                 <div className="flex items-center gap-2">
@@ -229,7 +231,7 @@ export function RedemptionModal({
               {/* FIFO Batch Allocation & Valuation Preview */}
               <div className="p-3.5 rounded-xl bg-surface-muted border border-border space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-stone-800">Calculated Payout (FIFO):</span>
+                  <span className="font-semibold text-stone-800">{t('redemption.calculatedPayout', 'Calculated Payout (FIFO):')}</span>
                   <span className="font-mono font-bold text-emerald-900 text-base">₹{preview.totalAmount}</span>
                 </div>
 
@@ -251,7 +253,7 @@ export function RedemptionModal({
               {/* UPI ID input */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-stone-700 block">
-                  Your UPI ID for Payout Transfer
+                  {t('redemption.upiPlaceholder', 'Your UPI ID for Payout Transfer')}
                 </label>
                 <input
                   type="text"
@@ -262,7 +264,7 @@ export function RedemptionModal({
                   required
                 />
                 <span className="text-[11px] text-stone-500 block">
-                  Payouts are simulated in demonstration mode. No real money will be dispatched.
+                  {t('redemption.payoutNotice', 'Payouts are simulated in demonstration mode. No real money will be dispatched.')}
                 </span>
               </div>
 
@@ -282,7 +284,7 @@ export function RedemptionModal({
                   loading={submitting}
                   disabled={availableTokens < 100 || !preview.isValid}
                 >
-                  Confirm Redemption (₹{preview.totalAmount})
+                  {t('redemption.submitBtn', 'Confirm Redemption')} (₹{preview.totalAmount})
                 </Button>
 
                 <Button
@@ -292,7 +294,7 @@ export function RedemptionModal({
                   onClick={onClose}
                   disabled={submitting}
                 >
-                  Cancel
+                  {t('common.cancel', 'Cancel')}
                 </Button>
               </div>
 

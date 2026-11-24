@@ -500,7 +500,7 @@ export function RecipientDashboardPage() {
         <div className="flex items-center gap-3">
           <Button variant="secondary" size="sm" onClick={() => fetchRecipientListings(true)} loading={refreshing}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <span>{t('common.refresh', 'Refresh')}</span>
           </Button>
 
           <Button
@@ -512,12 +512,12 @@ export function RecipientDashboardPage() {
             {operationalStatus === 'active' ? (
               <>
                 <PauseCircle className="w-3.5 h-3.5 mr-1.5 text-amber-600" />
-                <span>Pause Intake</span>
+                <span>{t('recipient.pauseIntake', 'Pause Intake')}</span>
               </>
             ) : (
               <>
                 <PlayCircle className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />
-                <span>Resume Intake</span>
+                <span>{t('recipient.resumeIntake', 'Resume Intake')}</span>
               </>
             )}
           </Button>
@@ -593,10 +593,10 @@ export function RecipientDashboardPage() {
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border pb-px overflow-x-auto">
         {[
-          { id: 'available', label: 'Available Donations', count: availableListings.length },
-          { id: 'accepted', label: 'Accepted / Handover', count: activeAcceptedListings.length },
-          { id: 'capacity', label: 'Capacity & Alerts', count: null },
-          { id: 'history', label: 'Donation History', count: historyListings.length }
+          { id: 'available', label: t('recipient.availableDonations', 'Available Donations'), count: availableListings.length },
+          { id: 'accepted', label: t('recipient.acceptedDonations', 'Accepted / Handover'), count: activeAcceptedListings.length },
+          { id: 'capacity', label: t('recipient.capacityAlerts', 'Capacity & Alerts'), count: null },
+          { id: 'history', label: t('recipient.history', 'Donation History'), count: historyListings.length }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -629,12 +629,12 @@ export function RecipientDashboardPage() {
           availableListings.length === 0 ? (
             <EmptyState
               icon={Building2}
-              title="No Available Donations in Current Radius"
+              title={t('recipient.noDonationsAvailable', 'No Available Donations in Current Radius')}
               description="No surplus listings are currently active within your initial radius matching your category. As waiting periods elapse (2 hours default), matching expands automatically."
               action={
                 <Button variant="outline" size="sm" onClick={() => fetchRecipientListings(true)} loading={refreshing}>
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
-                  Check for Updates
+                  {t('common.refresh', 'Check for Updates')}
                 </Button>
               }
             />

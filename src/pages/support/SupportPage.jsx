@@ -46,24 +46,24 @@ export function SupportPage() {
     {
       id: 'coffee',
       amount: 50,
-      label: 'Buy Us a Coffee',
-      desc: 'One-time voluntary support. No membership or token benefits.',
+      label: t('support.coffeeTitle', 'Buy Us a Coffee'),
+      desc: t('support.coffeeDesc', 'One-time voluntary support. No membership or token benefits.'),
       badge: 'Voluntary',
       badgeClass: 'bg-stone-100 text-stone-800'
     },
     {
       id: 'fuel_support',
       amount: 100,
-      label: 'Fuel Support',
-      desc: '30-day membership for Donors. Earn tokens on handovers. Redeem at ₹2 / 100 tokens.',
+      label: t('support.fuelTitle', 'Fuel Support'),
+      desc: t('support.fuelDesc', '30-day membership for Donors. Earn tokens on handovers. Redeem at ₹2 / 100 tokens.'),
       badge: '30-Day Pass',
       badgeClass: 'bg-emerald-100 text-emerald-800'
     },
     {
       id: 'corridor_help',
       amount: 250,
-      label: 'Corridor Help',
-      desc: '30-day membership for Donors. Earn tokens on handovers. Redeem at ₹6 / 100 tokens.',
+      label: t('support.corridorTitle', 'Corridor Help'),
+      desc: t('support.corridorDesc', '30-day membership for Donors. Earn tokens on handovers. Redeem at ₹6 / 100 tokens.'),
       badge: 'Premium Pass',
       badgeClass: 'bg-brand-100 text-brand-900'
     }
@@ -96,11 +96,10 @@ export function SupportPage() {
           <span>Voluntary Community Contributions</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight">
-          Support FoodBridge
+          {t('support.title', 'Support FoodBridge')}
         </h1>
         <p className="text-sm sm:text-base text-stone-600 leading-relaxed">
-          FoodBridge operates as an open community platform connecting surplus food with verified organizations across Karnataka.
-          Your voluntary contributions directly support our grassroots redistribution initiative.
+          {t('support.subtitle', 'FoodBridge operates as an open community platform connecting surplus food with verified organizations across Karnataka. Your voluntary contributions directly support our grassroots redistribution initiative.')}
         </p>
       </div>
 

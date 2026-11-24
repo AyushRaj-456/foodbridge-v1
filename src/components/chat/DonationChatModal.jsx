@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useLocale } from '../../context/LocaleContext';
 import {
   getOrCreateConversation,
   subscribeToMessages,
@@ -36,6 +37,7 @@ export function DonationChatModal({
   onDeliveryUpdated
 }) {
   const { user, profileData } = useAuth();
+  const { t, formatTime } = useLocale();
   const [messages, setMessages] = useState([]);
   const [conversation, setConversation] = useState(null);
   const [inputText, setInputText] = useState('');
@@ -292,13 +294,13 @@ export function DonationChatModal({
                 className="hidden sm:inline-flex"
               >
                 <Navigation className="w-3.5 h-3.5 mr-1" />
-                <span>Open Map</span>
+                <span>{t('map.title', 'Open Map')}</span>
               </Button>
 
               <button
                 onClick={onClose}
                 className="text-stone-400 hover:text-stone-700 p-1.5 rounded-lg transition-colors"
-                aria-label="Close Chat"
+                aria-label={t('common.close', 'Close')}
               >
                 <XCircle className="w-6 h-6" />
               </button>
@@ -381,7 +383,7 @@ export function DonationChatModal({
             ) : messages.length === 0 ? (
               <div className="py-20 text-center text-stone-400 text-xs">
                 <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p>No messages yet. Send a message to coordinate pickup or delivery.</p>
+                <p>{t('chat.empty', 'No messages yet. Send a message to coordinate pickup or delivery.')}</p>
               </div>
             ) : (
               messages.map((msg) => {
@@ -474,7 +476,7 @@ export function DonationChatModal({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Type a message to coordinate pickup or delivery..."
+              placeholder={t('chat.placeholder', 'Type a message to coordinate pickup or delivery...')}
               className="flex-1 px-4 py-2.5 rounded-xl border border-stone-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-700"
               disabled={sending}
             />
@@ -484,6 +486,7 @@ export function DonationChatModal({
               size="md"
               disabled={!inputText.trim() || sending}
               loading={sending}
+              aria-label={t('chat.send', 'Send')}
             >
               <Send className="w-4 h-4" />
             </Button>

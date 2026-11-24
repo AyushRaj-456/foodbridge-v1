@@ -216,7 +216,7 @@ export function DeliveryDashboardPage() {
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-            Delivery Coordination Workspace
+            {t('delivery.deliveryWorkspace', 'Delivery Coordination Workspace')}
           </h1>
           <p className="text-xs sm:text-sm text-stone-500 mt-0.5">
             Transport Mode: <strong className="capitalize">{profileData?.transportMode?.replace('_', ' ') || 'Courier'}</strong> • Capacity: <strong>{profileData?.maxCapacityKg || 20} kg</strong>
@@ -225,7 +225,7 @@ export function DeliveryDashboardPage() {
 
         <Button variant="secondary" size="sm" onClick={fetchDeliveries} loading={loading}>
           <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-          <span>Refresh</span>
+          <span>{t('common.refresh', 'Refresh')}</span>
         </Button>
       </div>
 
@@ -267,7 +267,7 @@ export function DeliveryDashboardPage() {
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <span>My Active Delivery</span>
+          <span>{t('delivery.myActiveDelivery', 'My Active Delivery')}</span>
           {activeDelivery && (
             <span className="ml-2 w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
           )}
@@ -282,7 +282,7 @@ export function DeliveryDashboardPage() {
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <span>Available Deliveries</span>
+          <span>{t('delivery.availableDeliveries', 'Available Deliveries')}</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
             {availableDeliveries.length}
           </span>
@@ -297,7 +297,7 @@ export function DeliveryDashboardPage() {
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <span>Delivery History</span>
+          <span>{t('delivery.deliveryHistory', 'Delivery History')}</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
             {deliveryHistory.length}
           </span>

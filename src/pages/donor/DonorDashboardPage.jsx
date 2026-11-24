@@ -254,10 +254,10 @@ export function DonorDashboardPage() {
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-900 border border-brand-200 text-xs font-semibold mb-1">
             <Utensils className="w-3.5 h-3.5 text-brand-700" />
-            <span>Donor Workspace</span>
+            <span>{t('donor.donorWorkspace', 'Donor Workspace')}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-            Surplus Food Listings
+            {t('donor.surplusFoodListings', 'Surplus Food Listings')}
           </h1>
           <p className="text-xs sm:text-sm text-stone-500 mt-0.5">
             {profileData?.organizationName || 'Manage your active food donations and past redistribution history'}
@@ -267,13 +267,13 @@ export function DonorDashboardPage() {
         <div className="flex items-center gap-3">
           <Button variant="secondary" size="sm" onClick={() => fetchListings(true)} loading={refreshing}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <span>{t('donor.refresh', 'Refresh')}</span>
           </Button>
 
           <Link to="/listings/create">
             <Button variant="primary" size="md">
               <Plus className="w-4 h-4 mr-1.5" />
-              <span>Create Food Listing</span>
+              <span>{t('donor.createFoodListing', 'Create Food Listing')}</span>
             </Button>
           </Link>
         </div>
@@ -300,7 +300,7 @@ export function DonorDashboardPage() {
             {activeListings.length}
           </span>
           <span className="block text-xs font-semibold text-stone-600 mt-0.5">
-            Active Listings
+            {t('donor.activeListings', 'Active Listings')}
           </span>
         </Card>
 
@@ -309,7 +309,7 @@ export function DonorDashboardPage() {
             {activeListings.filter((l) => l.status === 'matching').length}
           </span>
           <span className="block text-xs font-semibold text-stone-600 mt-0.5">
-            Matching in Progress
+            {t('donor.matchingInProgress', 'Matching in Progress')}
           </span>
         </Card>
 
@@ -318,7 +318,7 @@ export function DonorDashboardPage() {
             {activeListings.filter((l) => l.status === 'accepted' || l.status === 'in_transit').length}
           </span>
           <span className="block text-xs font-semibold text-stone-600 mt-0.5">
-            Accepted / In Transit
+            {t('donor.acceptedInTransit', 'Accepted / In Transit')}
           </span>
         </Card>
 
@@ -327,7 +327,7 @@ export function DonorDashboardPage() {
             {historyListings.filter((l) => l.status === 'completed').length}
           </span>
           <span className="block text-xs font-semibold text-stone-600 mt-0.5">
-            Completed Handovers
+            {t('donor.completedHandovers', 'Completed Handovers')}
           </span>
         </Card>
       </div>
@@ -342,7 +342,7 @@ export function DonorDashboardPage() {
             : 'border-transparent text-stone-500 hover:text-stone-800'
             }`}
         >
-          <span>Active Listings</span>
+          <span>{t('donor.activeListings', 'Active Listings')}</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
             {activeListings.length}
           </span>
@@ -356,7 +356,7 @@ export function DonorDashboardPage() {
             : 'border-transparent text-stone-500 hover:text-stone-800'
             }`}
         >
-          <span>Donation History</span>
+          <span>{t('donor.historyListings', 'Donation History')}</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
             {historyListings.length}
           </span>
@@ -372,7 +372,7 @@ export function DonorDashboardPage() {
         >
           <span className="flex items-center gap-1.5">
             <Coins className="w-3.5 h-3.5 text-amber-600" />
-            <span>Wallet & Rewards</span>
+            <span>{t('wallet.title', 'Wallet & Rewards')}</span>
           </span>
         </button>
       </div>
@@ -390,13 +390,13 @@ export function DonorDashboardPage() {
           activeListings.length === 0 ? (
             <EmptyState
               icon={Utensils}
-              title="No Active Surplus Listings"
-              description="Have extra cooked meals, fresh produce, or raw kitchen trims? Create a listing to redistribute food to verified organizations."
+              title={t('donor.noListingsFound', 'No Active Surplus Listings')}
+              description={t('donor.noListingsFoundDesc', 'Have extra cooked meals, fresh produce, or raw kitchen trims? Create a listing to redistribute food to verified organizations.')}
               action={
                 <Link to="/listings/create">
                   <Button variant="primary">
                     <Plus className="w-4 h-4 mr-1.5" />
-                    Create Food Listing
+                    {t('donor.createFoodListing', 'Create Food Listing')}
                   </Button>
                 </Link>
               }

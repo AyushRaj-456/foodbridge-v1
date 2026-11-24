@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocale } from '../../context/LocaleContext';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
@@ -34,6 +35,7 @@ import {
 } from 'lucide-react';
 
 export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships' }) {
+  const { t, formatCurrency, formatDate } = useLocale();
   const [activeTab, setActiveTab] = useState(subSection); // 'memberships' | 'rewards' | 'redemptions'
   const [redemptionFilter, setRedemptionFilter] = useState('all'); // 'all' | 'pending' | 'approved' | 'paid' | 'rejected'
 
@@ -266,7 +268,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <span>Donor Memberships & Contributions</span>
+          <span>{t('admin.tabMemberships', 'Donor Memberships & Contributions')}</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
             {transactions.length}
           </span>
@@ -281,7 +283,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <span>Reward & Daily Limits</span>
+          <span>{t('admin.tabRewards', 'Reward & Daily Limits')}</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
             {ledgerBatches.length}
           </span>
@@ -296,7 +298,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <span>Donor Redemptions</span>
+          <span>{t('admin.tabRedemptions', 'Donor Redemptions')}</span>
           {pendingRedemptions.length > 0 && (
             <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800 font-bold">
               {pendingRedemptions.length} pending
@@ -315,7 +317,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                 {activeMembershipsCount}
               </span>
               <span className="block text-xs font-semibold text-emerald-800 mt-0.5">
-                Active Donor Memberships
+                {t('admin.activeMemberships', 'Active Donor Memberships')}
               </span>
             </Card>
 
@@ -324,7 +326,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                 {queuedPeriodsCount}
               </span>
               <span className="block text-xs font-semibold text-blue-700 mt-0.5">
-                Queued Upcoming Passes
+                {t('admin.queuedPassesCount', 'Queued Upcoming Passes')}
               </span>
             </Card>
 
@@ -333,7 +335,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                 ₹{totalRevenue}
               </span>
               <span className="block text-xs font-semibold text-brand-900 mt-0.5">
-                Total Donor Contributions
+                {t('admin.totalSupportRevenue', 'Total Donor Contributions')}
               </span>
             </Card>
 

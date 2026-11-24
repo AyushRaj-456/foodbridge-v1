@@ -495,16 +495,16 @@ export function AdminVerificationPage() {
             <span>Administrator Workspace</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-            Admin Operations & Audit Console
+            {t('admin.workspaceTitle', 'Admin Operations & Audit Console')}
           </h1>
           <p className="text-xs sm:text-sm text-stone-500 mt-0.5">
-            Operational oversight, partner verification, listing monitoring, dispute resolution, and immutable logs.
+            {t('admin.workspaceSubtitle', 'Operational oversight, partner verification, listing monitoring, dispute resolution, and immutable logs.')}
           </p>
         </div>
 
         <Button variant="secondary" size="sm" onClick={loadData} loading={loading}>
           <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-          <span>Refresh</span>
+          <span>{t('common.refresh', 'Refresh')}</span>
         </Button>
       </div>
 
@@ -566,12 +566,12 @@ export function AdminVerificationPage() {
       {/* Main Workspace Navigation Tabs */}
       <div className="flex items-center gap-2 border-b border-border pb-px overflow-x-auto">
         {[
-          { id: 'verification', label: 'Organization Verification', count: pendingVerificationsCount },
-          { id: 'listings', label: 'Listings Oversight', count: listings.length },
-          { id: 'disputes', label: 'Disputes & Issues', count: activeDisputes.length },
-          { id: 'memberships', label: 'Memberships & Rewards', count: null },
-          { id: 'suspensions', label: 'Users & Suspension', count: allPartnersAndOrgs.length },
-          { id: 'audit', label: 'Audit Trail', count: auditLogs.length }
+          { id: 'verification', label: t('admin.tabVerification', 'Organization Verification'), count: pendingVerificationsCount },
+          { id: 'listings', label: t('admin.tabListings', 'Listings Oversight'), count: listings.length },
+          { id: 'disputes', label: t('admin.tabDisputes', 'Disputes & Issues'), count: activeDisputes.length },
+          { id: 'memberships', label: t('admin.tabMemberships', 'Memberships & Rewards'), count: null },
+          { id: 'suspensions', label: t('admin.tabSuspensions', 'Users & Suspension'), count: allPartnersAndOrgs.length },
+          { id: 'audit', label: t('admin.tabAudit', 'Audit Trail'), count: auditLogs.length }
         ].map((tab) => (
           <button
             key={tab.id}

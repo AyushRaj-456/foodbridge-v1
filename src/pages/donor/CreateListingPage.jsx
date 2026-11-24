@@ -408,7 +408,7 @@ export function CreateListingPage() {
             <div className="sm:col-span-2">
               <Input
                 id="listing-title"
-                label="Food / Material Title"
+                label={t('donor.title', 'Food / Material Title')}
                 required
                 placeholder="e.g. Steamed Rice and Mixed Vegetable Sambar, or Surplus Bakery Breads"
                 value={formData.title}
@@ -419,7 +419,7 @@ export function CreateListingPage() {
             <div className="sm:col-span-2">
               <Input
                 id="listing-desc"
-                label="Description & Details"
+                label={t('donor.description', 'Description & Details')}
                 as="textarea"
                 rows={2}
                 placeholder="Describe preparation details, packaging, portioning, or specific handling advice..."
@@ -430,7 +430,7 @@ export function CreateListingPage() {
 
             <Input
               id="listing-quantity"
-              label="Quantity"
+              label={t('donor.quantity', 'Quantity')}
               type="number"
               min="1"
               required
@@ -440,42 +440,42 @@ export function CreateListingPage() {
 
             <Input
               id="listing-unit"
-              label="Measurement Unit"
+              label={t('donor.unit', 'Measurement Unit')}
               as="select"
               value={formData.unit}
               onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
             >
-              <option value="meals">Meals / Portions</option>
-              <option value="kg">Kilograms (kg)</option>
-              <option value="liters">Liters (L)</option>
-              <option value="crates">Crates / Boxes</option>
+              <option value="meals">{t('donor.mealsUnit', 'Meals / Portions')}</option>
+              <option value="kg">{t('donor.kgUnit', 'Kilograms (kg)')}</option>
+              <option value="liters">{t('donor.litersUnit', 'Liters (L)')}</option>
+              <option value="crates">{t('donor.cratesUnit', 'Crates / Boxes')}</option>
             </Input>
 
             <Input
               id="listing-state"
-              label="Food State / Condition"
+              label={t('donor.foodState', 'Food State / Condition')}
               as="select"
               value={formData.foodState}
               onChange={(e) => setFormData({ ...formData, foodState: e.target.value })}
             >
-              <option value={FOOD_STATES.FRESHLY_PREPARED}>Freshly Prepared / Cooked Meal</option>
-              <option value={FOOD_STATES.PACKAGED_SEALED}>Packaged & Sealed Edibles</option>
-              <option value={FOOD_STATES.RAW_PRODUCE}>Raw Fresh Produce (Vegetables/Fruits)</option>
-              <option value={FOOD_STATES.TRIMMED_SCRAPS}>Kitchen Prep Trims & Scraps</option>
-              <option value={FOOD_STATES.SPOILED_EXPIRED}>Spoiled / Expired Organic Residues</option>
+              <option value={FOOD_STATES.FRESHLY_PREPARED}>{t('donor.freshPrepared', 'Freshly Prepared / Cooked Meal')}</option>
+              <option value={FOOD_STATES.PACKAGED_SEALED}>{t('donor.packagedSealed', 'Packaged & Sealed Edibles')}</option>
+              <option value={FOOD_STATES.RAW_PRODUCE}>{t('donor.rawProduce', 'Raw Fresh Produce (Vegetables/Fruits)')}</option>
+              <option value={FOOD_STATES.TRIMMED_SCRAPS}>{t('donor.trimmedScraps', 'Kitchen Prep Trims & Scraps')}</option>
+              <option value={FOOD_STATES.SPOILED_EXPIRED}>{t('donor.spoiledExpired', 'Spoiled / Expired Organic Residues')}</option>
             </Input>
 
             <Input
               id="listing-storage"
-              label="Current Storage & Holding Condition"
+              label={t('donor.storageCondition', 'Current Storage & Holding Condition')}
               as="select"
               value={formData.storageCondition}
               onChange={(e) => setFormData({ ...formData, storageCondition: e.target.value })}
             >
-              <option value={STORAGE_CONDITIONS.HOT_HELD}>Hot Held (above 60°C)</option>
-              <option value={STORAGE_CONDITIONS.COLD_HELD}>Refrigerated / Cold Held (below 5°C)</option>
-              <option value={STORAGE_CONDITIONS.ROOM_TEMP}>Ambient Room Temperature</option>
-              <option value={STORAGE_CONDITIONS.DRY_STORAGE}>Dry Pantry Storage</option>
+              <option value={STORAGE_CONDITIONS.HOT_HELD}>{t('donor.hotHeld', 'Hot Held (above 60°C)')}</option>
+              <option value={STORAGE_CONDITIONS.COLD_HELD}>{t('donor.coldHeld', 'Refrigerated / Cold Held (below 5°C)')}</option>
+              <option value={STORAGE_CONDITIONS.ROOM_TEMP}>{t('donor.roomTemp', 'Ambient Room Temperature')}</option>
+              <option value={STORAGE_CONDITIONS.DRY_STORAGE}>{t('donor.dryStorage', 'Dry Pantry Storage')}</option>
             </Input>
 
             {/* Vegetarian vs Non-Vegetarian (Conditional) */}
@@ -545,7 +545,7 @@ export function CreateListingPage() {
             {formData.foodState === FOOD_STATES.FRESHLY_PREPARED && (
               <Input
                 id="listing-prep-time"
-                label="Preparation / Cooking Time"
+                label={t('donor.prepTime', 'Preparation / Cooking Time')}
                 type="datetime-local"
                 required
                 value={formData.preparedAt}
@@ -555,7 +555,7 @@ export function CreateListingPage() {
 
             <Input
               id="listing-deadline"
-              label="Safe-Use / Consumption Deadline"
+              label={t('donor.safeUseDeadline', 'Safe-Use / Consumption Deadline')}
               type="datetime-local"
               required
               hint="After this timestamp, food is deemed unfit for consumption"
@@ -622,7 +622,7 @@ export function CreateListingPage() {
             <div className="sm:col-span-2">
               <Input
                 id="listing-address"
-                label="Full Pickup Address"
+                label={t('donor.pickupAddress', 'Full Pickup Address')}
                 required
                 placeholder="Building name, kitchen backdoor, street, landmark"
                 value={formData.address}
@@ -633,7 +633,7 @@ export function CreateListingPage() {
             <div className="sm:col-span-2">
               <Input
                 id="listing-pickup-instructions"
-                label="Access & Gate Instructions"
+                label={t('donor.pickupInstructions', 'Access & Gate Instructions')}
                 as="textarea"
                 rows={2}
                 placeholder="Inform security that you are picking up for FoodBridge. Park at loading bay 3."
@@ -791,7 +791,7 @@ export function CreateListingPage() {
         {/* Action Buttons */}
         <div className="flex items-center justify-between pt-4">
           <Button type="button" variant="secondary" onClick={() => navigate('/donor/dashboard')} disabled={loading}>
-            Cancel
+            {t('common.cancel', 'Cancel')}
           </Button>
 
           <Button
@@ -801,7 +801,7 @@ export function CreateListingPage() {
             loading={loading}
             disabled={!isFormValid || loading}
           >
-            {isEditing ? 'Save Changes' : 'Publish Food Listing'}
+            {isEditing ? t('common.save', 'Save Changes') : t('donor.submitListing', 'Publish Food Listing')}
           </Button>
         </div>
       </form>

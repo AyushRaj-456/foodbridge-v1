@@ -6,6 +6,7 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Input } from '../../components/common/Input';
+import { LanguageSelector } from '../../components/language/LanguageSelector';
 import {
   db,
   doc,
@@ -117,14 +118,14 @@ export function ProfileSettingsPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-              Account & Profile Settings
+              {t('profile.title', 'Account & Profile Settings')}
             </h1>
             {isAdmin && (
-              <Badge variant="accent" size="sm">Admin</Badge>
+              <Badge variant="accent" size="sm">{t('profile.adminBadge', 'Admin')}</Badge>
             )}
           </div>
           <p className="text-xs sm:text-sm text-stone-500 mt-1">
-            Signed in as <span className="font-semibold text-stone-800">{user?.email}</span>
+            {t('profile.subtitle', 'Signed in as')} <span className="font-semibold text-stone-800">{user?.email}</span>
           </p>
         </div>
 
@@ -133,16 +134,29 @@ export function ProfileSettingsPage() {
             <Link to="/admin/verification">
               <Button variant="secondary" size="sm">
                 <ShieldAlert className="w-4 h-4 mr-1 text-red-700" />
-                Admin Verification
+                {t('profile.adminVerification', 'Admin Verification')}
               </Button>
             </Link>
           )}
           <Button variant="outline" size="sm" onClick={logout}>
             <LogOut className="w-4 h-4 mr-1" />
-            Sign Out
+            {t('profile.signOut', 'Sign Out')}
           </Button>
         </div>
       </div>
+
+      {/* Language Preference Card */}
+      <Card className="p-5 bg-white border border-border shadow-sm rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-stone-900">
+            {t('profile.languageSetting', 'Preferred Display Language')}
+          </h3>
+          <p className="text-xs text-stone-500 mt-0.5">
+            Select your preferred language. Translations update immediately and synchronize with your account.
+          </p>
+        </div>
+        <LanguageSelector />
+      </Card>
 
       {successNotice && (
         <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-xs text-green-800 flex items-center justify-between">
@@ -196,7 +210,7 @@ export function ProfileSettingsPage() {
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-emerald-700 flex-shrink-0 mt-0.5" />
               <div>
-                <h4 className="text-sm font-bold">Verified & Active</h4>
+                <h4 className="text-sm font-bold">{t('profile.verifiedActive', 'Verified & Active')}</h4>
                 <p className="text-xs text-emerald-800 mt-0.5 leading-relaxed">
                   Your organization documentation has been verified by community administrators. You are eligible to receive and accept surplus food allocations.
                 </p>
@@ -208,7 +222,7 @@ export function ProfileSettingsPage() {
             <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-3">
               <Clock className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
               <div>
-                <h4 className="text-sm font-bold">Verification Pending</h4>
+                <h4 className="text-sm font-bold">{t('profile.pendingReview', 'Verification Pending')}</h4>
                 <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
                   Your submitted credentials are under review by platform administrators. To protect food dignity and community safety, donations cannot be accepted until review completes.
                 </p>
@@ -220,7 +234,7 @@ export function ProfileSettingsPage() {
             <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-900 flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-red-700 flex-shrink-0 mt-0.5" />
               <div>
-                <h4 className="text-sm font-bold">Verification Not Approved</h4>
+                <h4 className="text-sm font-bold">{t('profile.rejectedNotice', 'Verification Not Approved')}</h4>
                 <p className="text-xs text-red-800 mt-0.5 leading-relaxed">
                   Reason provided: {profileData?.rejectionReason || 'Documentation did not meet verification criteria.'}
                 </p>
@@ -393,7 +407,7 @@ export function ProfileSettingsPage() {
 
           <div className="flex justify-end pt-4 border-t border-border">
             <Button type="submit" variant="primary" loading={saving}>
-              Save Profile Updates
+              {t('profile.saveChanges', 'Save Profile Updates')}
             </Button>
           </div>
         </form>
