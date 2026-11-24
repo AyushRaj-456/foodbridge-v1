@@ -187,28 +187,28 @@ export function WalletView({ role = 'donor' }) {
               </span>
               {isMemberActive ? (
                 membership?.isCancelled ? (
-                  <Badge variant="warning" size="sm" className="bg-amber-500 text-white border-amber-400">
+                  <span className="inline-flex items-center text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-400 text-stone-950 border border-amber-300 shadow-sm">
                     CANCELLED (ACTIVE UNTIL EXPIRY)
-                  </Badge>
+                  </span>
                 ) : (
-                  <Badge variant="active" size="sm" className="bg-emerald-500 text-white border-emerald-400">
+                  <span className="inline-flex items-center text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-400 text-stone-950 border border-emerald-300 shadow-sm">
                     ACTIVE
-                  </Badge>
+                  </span>
                 )
               ) : membership?.status === 'expired' ? (
-                <Badge variant="warning" size="sm" className="bg-amber-500 text-white border-amber-400">
+                <span className="inline-flex items-center text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-400 text-stone-950 border border-amber-300 shadow-sm">
                   EXPIRED
-                </Badge>
+                </span>
               ) : (
-                <Badge variant="neutral" size="sm" className="bg-stone-700 text-stone-300 border-stone-600">
+                <span className="inline-flex items-center text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-stone-700 text-stone-100 border border-stone-600 shadow-sm">
                   NO MEMBERSHIP
-                </Badge>
+                </span>
               )}
 
               {upcomingPeriods.length > 0 && (
-                <Badge variant="outline" size="sm" className="bg-blue-900/60 text-blue-200 border-blue-400 text-[10px]">
+                <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-950 text-blue-200 border border-blue-500 shadow-sm">
                   +{upcomingPeriods.length} QUEUED PASS{upcomingPeriods.length > 1 ? 'ES' : ''}
-                </Badge>
+                </span>
               )}
             </div>
 

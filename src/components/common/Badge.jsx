@@ -25,10 +25,13 @@ export function Badge({
 
     // Status Badges
     verified: 'bg-brand-50 text-brand-800 border-brand-200',
-    active: 'bg-green-50 text-green-800 border-green-200',
-    pending: 'bg-yellow-50 text-yellow-800 border-yellow-200',
+    active: 'bg-emerald-100 text-emerald-950 border-emerald-300 font-semibold',
+    pending: 'bg-amber-50 text-amber-800 border-amber-200',
+    warning: 'bg-amber-100 text-amber-950 border-amber-300 font-semibold',
+    danger: 'bg-red-100 text-red-950 border-red-300 font-semibold',
     neutral: 'bg-surface-muted text-stone-700 border-border',
-    accent: 'bg-brand-800 text-white border-transparent'
+    accent: 'bg-brand-800 text-white border-transparent',
+    outline: 'bg-transparent text-stone-700 border-stone-300'
   };
 
   return (
