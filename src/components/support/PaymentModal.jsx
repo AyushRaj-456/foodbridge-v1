@@ -39,6 +39,7 @@ const INDIAN_BANKS = [
 
 export function PaymentModal({
   planId,
+  isDemoMode = false,
   onClose,
   onSuccess
 }) {
@@ -618,25 +619,35 @@ export function PaymentModal({
                   onClick={() => executePaymentSimulation('completed')}
                 >
                   <Lock className="w-4 h-4 mr-1.5" />
-                  <span>Pay ₹{plan.amount} (Simulate Success)</span>
+                  <span>{isDemoMode ? `Pay ₹${plan.amount} (Simulate Success)` : `Pay ₹${plan.amount}`}</span>
                 </Button>
 
-                <div className="grid grid-cols-2 gap-2">
+                {isDemoMode ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => executePaymentSimulation('failed', 'Simulated card authorization decline')}
+                      className="w-full py-2 px-3 rounded-lg border border-red-200 bg-red-50/50 hover:bg-red-100/60 text-red-800 text-[11px] font-medium transition-colors"
+                    >
+                      Simulate Failed Payment
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelPayment}
+                      className="w-full py-2 px-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-[11px] font-medium transition-colors"
+                    >
+                      Cancel Checkout
+                    </button>
+                  </div>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => executePaymentSimulation('failed', 'Simulated card authorization decline')}
-                    className="w-full py-2 px-3 rounded-lg border border-red-200 bg-red-50/50 hover:bg-red-100/60 text-red-800 text-[11px] font-medium transition-colors"
+                    onClick={onClose}
+                    className="w-full py-2 px-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-xs font-medium transition-colors"
                   >
-                    Simulate Failed Payment
+                    Cancel
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleCancelPayment}
-                    className="w-full py-2 px-3 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-[11px] font-medium transition-colors"
-                  >
-                    Cancel Checkout
-                  </button>
-                </div>
+                )}
               </div>
 
               <div className="flex items-center justify-center gap-1.5 text-[11px] text-stone-500 pt-1">
