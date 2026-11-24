@@ -60,7 +60,7 @@ const KARNATAKA_DISTRICTS = [
 
 export function CreateListingPage() {
   const { t } = useLocale();
-  const { user, profileData } = useAuth();
+  const { user, profileData, userDoc } = useAuth();
   const navigate = useNavigate();
   const { id: editListingId } = useParams();
 
@@ -69,33 +69,46 @@ export function CreateListingPage() {
   const formatDateTime = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   const now = new Date();
 
-  // Form State initialized with sensible defaults
-  const [formData, setFormData] = useState(() => ({
-    title: '',
-    description: '',
-    quantity: 25,
-    unit: 'meals', // meals, kg, liters, crates
-    donorCategory: profileData?.donorType || 'mess',
-    contactPerson: profileData?.contactPerson || '',
-    contactPhone: profileData?.phone || '',
-    address: profileData?.address || '',
-    district: profileData?.district || 'Bengaluru Urban',
-    latitude: 12.9716,
-    longitude: 77.5946,
-    pickupInstructions: profileData?.pickupInstructions || '',
-    availableFrom: formatDateTime(new Date(now.getTime() + 15 * 60 * 1000)),
-    availableUntil: formatDateTime(new Date(now.getTime() + 4 * 60 * 60 * 1000)),
-    preparedAt: formatDateTime(new Date(now.getTime() - 30 * 60 * 1000)),
-    safeUseDeadline: formatDateTime(new Date(now.getTime() + 6 * 60 * 60 * 1000)),
-    storageCondition: STORAGE_CONDITIONS.HOT_HELD,
-    foodState: FOOD_STATES.FRESHLY_PREPARED,
-    isVegetarian: true,
-    allergens: ['none'],
-    intendedSuitability: ['human'],
-    donorDeclaration: false,
-    photoUrl: '',
-    photoName: ''
-  }));
+  // Form State initialized with sensible defaults from donor's permanent saved location
+  const [formData, setFormData] = useState(() => {
+    const savedLat = Number(profileData?.location?.latitude ?? profileData?.latitude ?? userDoc?.location?.latitude ?? userDoc?.latitude ?? 12.9716);
+    const savedLon = Number(profileData?.location?.longitude ?? profileData?.longitude ?? userDoc?.location?.longitude ?? userDoc?.longitude ?? 77.5946);
+    const savedAddr = profileData?.location?.address || profileData?.address || userDoc?.location?.address || userDoc?.address || '';
+    const savedDist = profileData?.location?.district || profileData?.district || userDoc?.district || 'Bengaluru Urban';
+
+    return {
+      title: '',
+      description: '',
+      quantity: 25,
+      unit: 'meals', // meals, kg, liters, crates
+      donorCategory: profileData?.donorType || 'mess',
+      contactPerson: profileData?.contactPerson || userDoc?.contactPerson || '',
+      contactPhone: profileData?.phone || userDoc?.phone || '',
+      address: savedAddr,
+      district: savedDist,
+      latitude: savedLat,
+      longitude: savedLon,
+      location: {
+        latitude: savedLat,
+        longitude: savedLon,
+        address: savedAddr,
+        district: savedDist
+      },
+      pickupInstructions: profileData?.pickupInstructions || '',
+      availableFrom: formatDateTime(new Date(now.getTime() + 15 * 60 * 1000)),
+      availableUntil: formatDateTime(new Date(now.getTime() + 4 * 60 * 60 * 1000)),
+      preparedAt: formatDateTime(new Date(now.getTime() - 30 * 60 * 1000)),
+      safeUseDeadline: formatDateTime(new Date(now.getTime() + 6 * 60 * 60 * 1000)),
+      storageCondition: STORAGE_CONDITIONS.HOT_HELD,
+      foodState: FOOD_STATES.FRESHLY_PREPARED,
+      isVegetarian: true,
+      allergens: ['none'],
+      intendedSuitability: ['human'],
+      donorDeclaration: false,
+      photoUrl: '',
+      photoName: ''
+    };
+  });
 
   const [loading, setLoading] = useState(false);
   const [fetchingExisting, setFetchingExisting] = useState(isEditing);
@@ -104,18 +117,31 @@ export function CreateListingPage() {
   const [photoPreview, setPhotoPreview] = useState('');
   const isSubmittingRef = React.useRef(false);
 
-  // Sync profile data if loaded asynchronously on new listing
+  // Sync donor's permanent saved location and contact data when profile loads asynchronously
   useEffect(() => {
-    if (!isEditing && profileData) {
+    if (!isEditing && (profileData || userDoc)) {
+      const savedLat = Number(profileData?.location?.latitude ?? profileData?.latitude ?? userDoc?.location?.latitude ?? userDoc?.latitude ?? 12.9716);
+      const savedLon = Number(profileData?.location?.longitude ?? profileData?.longitude ?? userDoc?.location?.longitude ?? userDoc?.longitude ?? 77.5946);
+      const savedAddr = profileData?.location?.address || profileData?.address || userDoc?.location?.address || userDoc?.address || '';
+      const savedDist = profileData?.location?.district || profileData?.district || userDoc?.district || 'Bengaluru Urban';
+
       setFormData((prev) => ({
         ...prev,
-        contactPerson: prev.contactPerson || profileData.contactPerson || '',
-        contactPhone: prev.contactPhone || profileData.phone || '',
-        address: prev.address || profileData.address || '',
-        district: prev.district || profileData.district || 'Bengaluru Urban'
+        contactPerson: prev.contactPerson || profileData?.contactPerson || userDoc?.contactPerson || '',
+        contactPhone: prev.contactPhone || profileData?.phone || userDoc?.phone || '',
+        address: prev.address || savedAddr,
+        district: prev.district || savedDist,
+        latitude: prev.latitude && prev.latitude !== 12.9716 ? prev.latitude : savedLat,
+        longitude: prev.longitude && prev.longitude !== 77.5946 ? prev.longitude : savedLon,
+        location: {
+          latitude: prev.latitude && prev.latitude !== 12.9716 ? prev.latitude : savedLat,
+          longitude: prev.longitude && prev.longitude !== 77.5946 ? prev.longitude : savedLon,
+          address: prev.address || savedAddr,
+          district: prev.district || savedDist
+        }
       }));
     }
-  }, [isEditing, profileData]);
+  }, [isEditing, profileData, userDoc]);
 
   // If editing, load existing listing data
   useEffect(() => {
@@ -278,8 +304,14 @@ export function CreateListingPage() {
         contactPhone: formData.contactPhone.trim(),
         address: formData.address.trim(),
         district: formData.district,
-        latitude: formData.latitude,
-        longitude: formData.longitude,
+        latitude: Number(formData.latitude) || 12.9716,
+        longitude: Number(formData.longitude) || 77.5946,
+        location: {
+          latitude: Number(formData.latitude) || 12.9716,
+          longitude: Number(formData.longitude) || 77.5946,
+          address: formData.address.trim(),
+          district: formData.district
+        },
         pickupInstructions: formData.pickupInstructions.trim(),
         availableFrom: formData.availableFrom,
         availableUntil: formData.availableUntil,

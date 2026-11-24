@@ -202,10 +202,10 @@
     "title": "भोजन / सामग्री का नाम",
     "description": "विवरण और विशिष्टताएं",
     "quantity": "मात्रा",
-    "unit": "इकाई",
+    "unit": "माप की इकाई",
     "category": "दाता श्रेणी",
-    "foodState": "भोजन की स्थिति",
-    "storageCondition": "भंडारण स्थिति",
+    "foodState": "भोजन की स्थिति / स्थिति",
+    "storageCondition": "वर्तमान भंडारण और रखरखाव की स्थिति",
     "prepTime": "तैयारी / पैकेजिंग का समय",
     "safeUseDeadline": "सुरक्षित उपयोग / संग्रह की अंतिम समय सीमा",
     "isVegetarian": "केवल शाकाहारी",
@@ -252,8 +252,8 @@
     "spoiledExpired": "खराब / समाप्त जैविक अवशेष"
   },
   "recipient": {
-    "availableDonations": "उपलब्ध अतिरिक्त भोजन",
-    "acceptedDonations": "स्वीकृत आवंटन",
+    "availableDonations": "उपलब्ध दान",
+    "acceptedDonations": "स्वीकृत / हैंडओवर",
     "capacityAlerts": "क्षमता और अलर्ट",
     "history": "दान इतिहास",
     "acceptFood": "भोजन स्वीकार करें",
@@ -292,7 +292,9 @@
     "confirmDropoffDone": "वितरण पूरा होने की पुष्टि करें",
     "noDeliveriesFound": "आपके क्षेत्र में वर्तमान में कोई डिलीवरी कार्य उपलब्ध नहीं है।",
     "pickupFrom": "यहाँ से पिकअप",
-    "dropoffTo": "यहाँ वितरित करें"
+    "dropoffTo": "यहाँ वितरित करें",
+    "shareLiveGps": "लाइव जीपीएस साझा करें",
+    "broadcastingGps": "जीपीएस प्रसारित हो रहा है"
   },
   "admin": {
     "workspaceTitle": "प्रशासनिक कार्यक्षेत्र",
@@ -514,7 +516,8 @@
   },
   "chat": {
     "title": "दान समन्वय चैट",
-    "placeholder": "एक संदेश लिखें...",
+    "placeholder": "पिकअप या डिलीवरी समन्वय के लिए संदेश लिखें...",
+    "inputPlaceholder": "पिकअप या डिलीवरी का समन्वय करें...",
     "send": "भेजें",
     "empty": "अभी कोई संदेश नहीं है। पिकअप समन्वय के लिए संदेश भेजें।",
     "participants": "प्रतिभागी"
@@ -523,8 +526,21 @@
     "title": "डिलीवरी रूट मैप",
     "pickup": "पिकअप स्थान",
     "dropoff": "ड्रॉप-ऑफ स्थान",
-    "distance": "दूरी",
-    "eta": "अनुमानित समय"
+    "distance": "सड़क दूरी",
+    "eta": "अनुमानित समय",
+    "shortestRoadRoute": "लघुतम सड़क मार्ग",
+    "offlineFallback": "अनुमानित मार्ग (ऑफ़लाइन फ़ॉलबैक)",
+    "motorcycle": "मोटरसाइकिल",
+    "courierMarker": "डिलीवरी पार्टनर",
+    "liveGps": "लाइव जीपीएस ट्रैकिंग",
+    "enRouteRoad": "डिलीवरी पार्टनर सड़क मार्ग पर हैं"
+  },
+  "location": {
+    "pickerTitle": "स्थायी स्थान",
+    "searchPlaceholder": "क्षेत्र, लैंडमार्क या सड़क खोजें...",
+    "myGps": "मेरा जीपीएस",
+    "selectedPermanentAddress": "चयनित स्थायी पता",
+    "adjustPinHint": "समायोजित करने के लिए मानचित्र पर क्लिक करें या पिन खींचें"
   },
   "profile": {
     "title": "खाता और प्रोफ़ाइल सेटिंग्स",

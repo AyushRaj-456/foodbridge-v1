@@ -7,6 +7,7 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Input } from '../../components/common/Input';
 import { LanguageSelector } from '../../components/language/LanguageSelector';
+import { LocationPickerMap } from '../../components/map/LocationPickerMap';
 import {
   db,
   doc,
@@ -44,13 +45,21 @@ export function ProfileSettingsPage() {
   const [recipientPhone, setRecipientPhone] = useState(profileData?.phone || '');
 
   // Editable fields for Donor
-  const [donorAddress, setDonorAddress] = useState(profileData?.address || '');
+  const [donorAddress, setDonorAddress] = useState(profileData?.address || userDoc?.address || '');
   const [pickupInstructions, setPickupInstructions] = useState(profileData?.pickupInstructions || '');
   const [donorPhone, setDonorPhone] = useState(profileData?.phone || '');
 
   // Editable fields for Delivery
   const [deliveryAvailability, setDeliveryAvailability] = useState(profileData?.availability || 'flexible');
   const [deliveryPhone, setDeliveryPhone] = useState(profileData?.phone || '');
+
+  // Permanent Location State (Preserved and shared across account)
+  const [savedLocation, setSavedLocation] = useState({
+    latitude: Number(profileData?.location?.latitude ?? profileData?.latitude ?? userDoc?.location?.latitude ?? userDoc?.latitude ?? 12.9716),
+    longitude: Number(profileData?.location?.longitude ?? profileData?.longitude ?? userDoc?.location?.longitude ?? userDoc?.longitude ?? 77.5946),
+    address: profileData?.location?.address || profileData?.address || userDoc?.location?.address || userDoc?.address || '',
+    district: profileData?.location?.district || profileData?.district || profileData?.serviceDistrict || userDoc?.district || 'Bengaluru Urban'
+  });
 
   const activeRole = userDoc?.activeRole || userDoc?.roles?.[0] || 'donor';
 
@@ -70,18 +79,35 @@ export function ProfileSettingsPage() {
 
     try {
       setSaving(true);
+
+      const locationPayload = {
+        latitude: savedLocation.latitude,
+        longitude: savedLocation.longitude,
+        address: savedLocation.address,
+        district: savedLocation.district
+      };
+
       if (activeRole === 'recipient') {
         const ref = doc(db, 'recipients', user.uid);
         await updateDoc(ref, {
           availableAdditionalCapacity: Number(additionalCapacity),
           operatingHours,
           phone: recipientPhone,
+          address: savedLocation.address,
+          district: savedLocation.district,
+          latitude: savedLocation.latitude,
+          longitude: savedLocation.longitude,
+          location: locationPayload,
           updatedAt: serverTimestamp()
         });
       } else if (activeRole === 'donor') {
         const ref = doc(db, 'donors', user.uid);
         await updateDoc(ref, {
-          address: donorAddress,
+          address: savedLocation.address || donorAddress,
+          district: savedLocation.district,
+          latitude: savedLocation.latitude,
+          longitude: savedLocation.longitude,
+          location: locationPayload,
           pickupInstructions,
           phone: donorPhone,
           updatedAt: serverTimestamp()
@@ -91,12 +117,29 @@ export function ProfileSettingsPage() {
         await updateDoc(ref, {
           availability: deliveryAvailability,
           phone: deliveryPhone,
+          address: savedLocation.address,
+          serviceDistrict: savedLocation.district,
+          latitude: savedLocation.latitude,
+          longitude: savedLocation.longitude,
+          homeLocation: locationPayload,
+          location: locationPayload,
           updatedAt: serverTimestamp()
         });
       }
 
+      // Also persist to users/{uid} without overwriting other attributes
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        address: savedLocation.address,
+        district: savedLocation.district,
+        latitude: savedLocation.latitude,
+        longitude: savedLocation.longitude,
+        location: locationPayload,
+        updatedAt: serverTimestamp()
+      });
+
       await refreshUserProfile();
-      setSuccessNotice('Profile changes saved successfully.');
+      setSuccessNotice('Profile and permanent location changes saved successfully.');
     } catch (err) {
       setErrorNotice(err.message || 'Error updating profile.');
     } finally {
@@ -349,59 +392,92 @@ export function ProfileSettingsPage() {
                   onChange={(e) => setOperatingHours(e.target.value)}
                 />
               </div>
+
+              <div className="pt-2">
+                <LocationPickerMap
+                  initialLat={savedLocation.latitude}
+                  initialLon={savedLocation.longitude}
+                  initialAddress={savedLocation.address}
+                  label="Permanent Facility Dropoff Location"
+                  helperText="Update your organization's physical shelter address and coordinates. All future accepted deliveries will route to this pin."
+                  required
+                  onLocationSelect={({ latitude, longitude, address, district }) => {
+                    setSavedLocation({ latitude, longitude, address, district });
+                  }}
+                />
+              </div>
             </>
           )}
 
           {/* Donor Form Fields */}
           {activeRole === 'donor' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                id="edit-donor-phone"
-                label="Contact Phone"
-                value={donorPhone}
-                onChange={(e) => setDonorPhone(e.target.value)}
-              />
-              <div className="sm:col-span-2">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
-                  id="edit-donor-address"
-                  label="Pickup Address"
-                  value={donorAddress}
-                  onChange={(e) => setDonorAddress(e.target.value)}
+                  id="edit-donor-phone"
+                  label="Contact Phone"
+                  value={donorPhone}
+                  onChange={(e) => setDonorPhone(e.target.value)}
                 />
-              </div>
-              <div className="sm:col-span-2">
                 <Input
                   id="edit-donor-instructions"
                   label="Pickup Access Instructions"
-                  as="textarea"
+                  placeholder="e.g. Loading dock at rear"
                   value={pickupInstructions}
                   onChange={(e) => setPickupInstructions(e.target.value)}
                 />
               </div>
+
+              <LocationPickerMap
+                initialLat={savedLocation.latitude}
+                initialLon={savedLocation.longitude}
+                initialAddress={savedLocation.address}
+                label="Permanent Operational Pickup Location"
+                helperText="Update your kitchen or establishment's permanent pickup address. New food listings will automatically use this location."
+                required
+                onLocationSelect={({ latitude, longitude, address, district }) => {
+                  setSavedLocation({ latitude, longitude, address, district });
+                  setDonorAddress(address);
+                }}
+              />
             </div>
           )}
 
           {/* Delivery Form Fields */}
           {activeRole === 'delivery' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                id="edit-del-phone"
-                label="Phone Number"
-                value={deliveryPhone}
-                onChange={(e) => setDeliveryPhone(e.target.value)}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  id="edit-del-phone"
+                  label="Phone Number"
+                  value={deliveryPhone}
+                  onChange={(e) => setDeliveryPhone(e.target.value)}
+                />
+                <Input
+                  id="edit-del-avail"
+                  label="Availability Window"
+                  as="select"
+                  value={deliveryAvailability}
+                  onChange={(e) => setDeliveryAvailability(e.target.value)}
+                >
+                  <option value="flexible">Flexible / On-Call</option>
+                  <option value="morning">Morning (06:00 - 12:00)</option>
+                  <option value="afternoon">Afternoon (12:00 - 18:00)</option>
+                  <option value="evening">Evening (18:00 - 23:00)</option>
+                </Input>
+              </div>
+
+              <LocationPickerMap
+                initialLat={savedLocation.latitude}
+                initialLon={savedLocation.longitude}
+                initialAddress={savedLocation.address}
+                label="Permanent Home / Operating Base Location"
+                helperText="Update your registered permanent home base. (Live GPS location during active trips is tracked separately)."
+                required
+                onLocationSelect={({ latitude, longitude, address, district }) => {
+                  setSavedLocation({ latitude, longitude, address, district });
+                }}
               />
-              <Input
-                id="edit-del-avail"
-                label="Availability Window"
-                as="select"
-                value={deliveryAvailability}
-                onChange={(e) => setDeliveryAvailability(e.target.value)}
-              >
-                <option value="flexible">Flexible / On-Call</option>
-                <option value="morning">Morning (06:00 - 12:00)</option>
-                <option value="afternoon">Afternoon (12:00 - 18:00)</option>
-                <option value="evening">Evening (18:00 - 23:00)</option>
-              </Input>
             </div>
           )}
 

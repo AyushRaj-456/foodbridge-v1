@@ -97,24 +97,24 @@ export async function createDeliveryRequest(db, listing, recipientProfile, costD
     safeUseDeadline: listing.safeUseDeadline,
     handlingNotes: handlingNotes || listing.pickupInstructions || '',
 
-    // Donor Info (Private pickup details)
+    // Donor Info (Private pickup details from exact saved location)
     donorId: listing.donorId,
     donorName: listing.donorName,
     donorPhone: listing.contactPhone,
-    pickupAddress: listing.address,
-    pickupDistrict: listing.district,
-    pickupLatitude: listing.latitude,
-    pickupLongitude: listing.longitude,
+    pickupAddress: listing.location?.address || listing.address || '',
+    pickupDistrict: listing.location?.district || listing.district || '',
+    pickupLatitude: Number(listing.location?.latitude ?? listing.latitude) || 12.9716,
+    pickupLongitude: Number(listing.location?.longitude ?? listing.longitude) || 77.5946,
     pickupInstructions: listing.pickupInstructions || '',
 
-    // Recipient Info (Private dropoff details)
+    // Recipient Info (Private dropoff details from exact saved location)
     recipientId: recipientProfile.userId || recipientProfile.id,
     recipientName: recipientProfile.organizationName,
     recipientPhone: recipientProfile.phone,
-    dropoffAddress: recipientProfile.address,
-    dropoffDistrict: recipientProfile.district,
-    dropoffLatitude: recipientProfile.latitude || 12.9716,
-    dropoffLongitude: recipientProfile.longitude || 77.5946,
+    dropoffAddress: recipientProfile.location?.address || recipientProfile.address || '',
+    dropoffDistrict: recipientProfile.location?.district || recipientProfile.district || '',
+    dropoffLatitude: Number(recipientProfile.location?.latitude ?? recipientProfile.latitude) || 12.9716,
+    dropoffLongitude: Number(recipientProfile.location?.longitude ?? recipientProfile.longitude) || 77.5946,
 
     // Distance
     approxDistanceKm: listing.distanceKm || 2.5,
@@ -631,11 +631,44 @@ export async function requestAndAssignDeliveryPartner(dbInstance = db, {
   const database = dbInstance || db;
   const district = donation.district || recipientProfile?.district || 'Bengaluru Urban';
 
-  // 1. Calculate road route and 50/50 fare
-  const pickupLat = Number(donation.latitude) || 12.9716;
-  const pickupLon = Number(donation.longitude) || 77.5946;
-  const dropLat = Number(donation.acceptedRecipientLatitude || recipientProfile?.latitude) || 12.9740;
-  const dropLon = Number(donation.acceptedRecipientLongitude || recipientProfile?.longitude) || 77.5990;
+  // 1. Calculate road route and 50/50 fare using exact saved coordinates
+  let pickupLat = Number(donation.location?.latitude ?? donation.latitude ?? donation.pickupLatitude);
+  let pickupLon = Number(donation.location?.longitude ?? donation.longitude ?? donation.pickupLongitude);
+  let dropLat = Number(donation.acceptedRecipientLocation?.latitude ?? donation.acceptedRecipientLatitude ?? recipientProfile?.location?.latitude ?? recipientProfile?.latitude ?? donation.dropoffLatitude);
+  let dropLon = Number(donation.acceptedRecipientLocation?.longitude ?? donation.acceptedRecipientLongitude ?? recipientProfile?.location?.longitude ?? recipientProfile?.longitude ?? donation.dropoffLongitude);
+
+  // If coordinates are missing, fetch directly from Firestore donor / recipient permanent records
+  if (isNaN(pickupLat) || isNaN(pickupLon) || pickupLat === 0 || pickupLon === 0) {
+    if (donation.donorId) {
+      try {
+        const donorSnap = await getDoc(doc(database, 'donors', donation.donorId));
+        if (donorSnap.exists()) {
+          const dData = donorSnap.data();
+          pickupLat = Number(dData.location?.latitude ?? dData.latitude);
+          pickupLon = Number(dData.location?.longitude ?? dData.longitude);
+        }
+      } catch (e) {}
+    }
+  }
+
+  const recId = donation.acceptedRecipientId || recipientProfile?.userId || recipientProfile?.id;
+  if (isNaN(dropLat) || isNaN(dropLon) || dropLat === 0 || dropLon === 0) {
+    if (recId) {
+      try {
+        const recSnap = await getDoc(doc(database, 'recipients', recId));
+        if (recSnap.exists()) {
+          const rData = recSnap.data();
+          dropLat = Number(rData.location?.latitude ?? rData.latitude);
+          dropLon = Number(rData.location?.longitude ?? rData.longitude);
+        }
+      } catch (e) {}
+    }
+  }
+
+  pickupLat = !isNaN(pickupLat) && pickupLat !== 0 ? pickupLat : 12.9716;
+  pickupLon = !isNaN(pickupLon) && pickupLon !== 0 ? pickupLon : 77.5946;
+  dropLat = !isNaN(dropLat) && dropLat !== 0 ? dropLat : 12.9740;
+  dropLon = !isNaN(dropLon) && dropLon !== 0 ? dropLon : 77.5990;
 
   const routeAndFare = await calculateRouteAndFare(pickupLat, pickupLon, dropLat, dropLon, donation.id);
   const { distanceKm, durationMin, fare } = routeAndFare;
@@ -809,4 +842,26 @@ export async function requestAndAssignDeliveryPartner(dbInstance = db, {
     distanceKm,
     durationMin
   };
+}
+
+/**
+ * Broadcasts the live GPS position of a delivery partner during transit.
+ * Persists in deliveryPartners/{partnerId}.currentLocation.
+ *
+ * @param {Object} database Firestore instance
+ * @param {string} partnerId
+ * @param {{ latitude: number, longitude: number }} coords
+ */
+export async function updateDeliveryPartnerLiveLocation(database, partnerId, { latitude, longitude }) {
+  if (!partnerId || isNaN(Number(latitude)) || isNaN(Number(longitude))) return;
+  const dbInst = database || db;
+  const pRef = doc(dbInst, 'deliveryPartners', partnerId);
+  await updateDoc(pRef, {
+    currentLocation: {
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      updatedAt: serverTimestamp()
+    },
+    updatedAt: serverTimestamp()
+  });
 }

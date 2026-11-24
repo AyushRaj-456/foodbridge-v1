@@ -6,6 +6,7 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { storage, ref, uploadBytes, getDownloadURL } from '../../services/firebase';
+import { LocationPickerMap } from '../../components/map/LocationPickerMap';
 import {
   Utensils,
   Building2,
@@ -98,6 +99,9 @@ export function OnboardingFlow() {
     phone: userDoc?.contactPhone || userDoc?.phone || userDoc?.profileData?.phone || '',
     address: userDoc?.address || userDoc?.profileData?.address || '',
     district: userDoc?.district || userDoc?.profileData?.district || 'Bengaluru Urban',
+    latitude: Number(userDoc?.profileData?.latitude ?? userDoc?.latitude ?? 12.9716),
+    longitude: Number(userDoc?.profileData?.longitude ?? userDoc?.longitude ?? 77.5946),
+    location: userDoc?.profileData?.location || userDoc?.location || null,
     pickupInstructions: userDoc?.pickupInstructions || userDoc?.profileData?.pickupInstructions || ''
   });
 
@@ -111,8 +115,9 @@ export function OnboardingFlow() {
     verifiedEmail: user?.email || '',
     address: userDoc?.address || userDoc?.profileData?.address || '',
     district: userDoc?.district || userDoc?.profileData?.district || 'Bengaluru Urban',
-    latitude: userDoc?.profileData?.latitude || 12.9716,
-    longitude: userDoc?.profileData?.longitude || 77.5946,
+    latitude: Number(userDoc?.profileData?.latitude ?? userDoc?.latitude ?? 12.9716),
+    longitude: Number(userDoc?.profileData?.longitude ?? userDoc?.longitude ?? 77.5946),
+    location: userDoc?.profileData?.location || userDoc?.location || null,
     serviceRadiusKm: userDoc?.profileData?.serviceRadiusKm || 5,
     acceptedMaterialTypes: userDoc?.profileData?.acceptedMaterialTypes || ['cooked_meals', 'packaged_foods'],
     operatingHours: userDoc?.profileData?.operatingHours || '08:00 - 20:00',
@@ -130,6 +135,11 @@ export function OnboardingFlow() {
     phone: userDoc?.contactPhone || userDoc?.phone || userDoc?.profileData?.phone || '',
     emergencyContact: userDoc?.profileData?.emergencyContact || '',
     serviceDistrict: userDoc?.district || userDoc?.profileData?.serviceDistrict || 'Bengaluru Urban',
+    address: userDoc?.address || userDoc?.profileData?.address || userDoc?.profileData?.homeLocation?.address || '',
+    latitude: Number(userDoc?.profileData?.latitude ?? userDoc?.profileData?.homeLocation?.latitude ?? 12.9716),
+    longitude: Number(userDoc?.profileData?.longitude ?? userDoc?.profileData?.homeLocation?.longitude ?? 77.5946),
+    homeLocation: userDoc?.profileData?.homeLocation || userDoc?.location || null,
+    location: userDoc?.profileData?.location || userDoc?.profileData?.homeLocation || null,
     transportMode: userDoc?.profileData?.transportMode || 'two_wheeler',
     maxCapacityKg: userDoc?.profileData?.maxCapacityKg || 20,
     availability: userDoc?.profileData?.availability || 'flexible',
@@ -191,15 +201,15 @@ export function OnboardingFlow() {
     e.preventDefault();
     setError('');
 
-    // Strict single-role validation
+    // Strict single-role validation & mandatory location selection
     if (selectedRole === 'donor') {
       if (!donorData.organizationName || !donorData.phone || !donorData.address) {
-        setError('Please complete all required donor organization details.');
+        setError('Please complete all required donor details and confirm your permanent location on the map.');
         return;
       }
     } else if (selectedRole === 'recipient') {
       if (!recipientData.organizationName || !recipientData.phone || !recipientData.address) {
-        setError('Please complete all required recipient organization details.');
+        setError('Please complete all required recipient details and confirm your facility location on the map.');
         return;
       }
       if (Number(recipientData.availableAdditionalCapacity) <= 0) {
@@ -207,8 +217,8 @@ export function OnboardingFlow() {
         return;
       }
     } else if (selectedRole === 'delivery') {
-      if (!deliveryData.fullName || !deliveryData.phone) {
-        setError('Please complete all required delivery partner details.');
+      if (!deliveryData.fullName || !deliveryData.phone || !deliveryData.address) {
+        setError('Please complete your full name, phone, and permanent base location on the map.');
         return;
       }
     }
@@ -395,13 +405,23 @@ export function OnboardingFlow() {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <Input
-                    id="donor-address"
-                    label="Default Pickup Address"
+                  <LocationPickerMap
+                    initialLat={donorData.latitude}
+                    initialLon={donorData.longitude}
+                    initialAddress={donorData.address}
+                    label="Permanent Operational Pickup Location"
+                    helperText="Pinpoint your kitchen/mess address on the map. This permanent location is used automatically for all food surplus listings and delivery routing."
                     required
-                    placeholder="Full street address and landmark"
-                    value={donorData.address}
-                    onChange={(e) => setDonorData({ ...donorData, address: e.target.value })}
+                    onLocationSelect={({ latitude, longitude, address, district }) => {
+                      setDonorData((prev) => ({
+                        ...prev,
+                        latitude,
+                        longitude,
+                        address,
+                        district: district && KARNATAKA_DISTRICTS.includes(district) ? district : prev.district,
+                        location: { latitude, longitude, address, district: district || prev.district }
+                      }));
+                    }}
                   />
                 </div>
 
@@ -521,13 +541,23 @@ export function OnboardingFlow() {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <Input
-                    id="rec-address"
-                    label="Facility Physical Address"
+                  <LocationPickerMap
+                    initialLat={recipientData.latitude}
+                    initialLon={recipientData.longitude}
+                    initialAddress={recipientData.address}
+                    label="Permanent Facility Dropoff Location"
+                    helperText="Pinpoint your shelter/organization facility address on the map. All accepted food redistribution deliveries will route directly to these coordinates."
                     required
-                    placeholder="Street, area, pin code"
-                    value={recipientData.address}
-                    onChange={(e) => setRecipientData({ ...recipientData, address: e.target.value })}
+                    onLocationSelect={({ latitude, longitude, address, district }) => {
+                      setRecipientData((prev) => ({
+                        ...prev,
+                        latitude,
+                        longitude,
+                        address,
+                        district: district && KARNATAKA_DISTRICTS.includes(district) ? district : prev.district,
+                        location: { latitude, longitude, address, district: district || prev.district }
+                      }));
+                    }}
                   />
                 </div>
 
@@ -701,6 +731,28 @@ export function OnboardingFlow() {
                   value={deliveryData.maxCapacityKg}
                   onChange={(e) => setDeliveryData({ ...deliveryData, maxCapacityKg: Number(e.target.value) })}
                 />
+
+                <div className="sm:col-span-2">
+                  <LocationPickerMap
+                    initialLat={deliveryData.latitude}
+                    initialLon={deliveryData.longitude}
+                    initialAddress={deliveryData.address}
+                    label="Permanent Home / Operating Base Location"
+                    helperText="Set your permanent registered home or base location. Note: When you are out on active deliveries, your live GPS position is tracked on the road route map instead of this base location."
+                    required
+                    onLocationSelect={({ latitude, longitude, address, district }) => {
+                      setDeliveryData((prev) => ({
+                        ...prev,
+                        latitude,
+                        longitude,
+                        address,
+                        serviceDistrict: district && KARNATAKA_DISTRICTS.includes(district) ? district : prev.serviceDistrict,
+                        homeLocation: { latitude, longitude, address, district: district || prev.serviceDistrict },
+                        location: { latitude, longitude, address, district: district || prev.serviceDistrict }
+                      }));
+                    }}
+                  />
+                </div>
 
                 <div className="sm:col-span-2">
                   <Input

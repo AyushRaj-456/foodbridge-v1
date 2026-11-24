@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocale } from '../../context/LocaleContext';
 import {
@@ -15,7 +15,8 @@ import {
 import {
   DELIVERY_STATUSES,
   claimDeliveryAtomic,
-  transitionDeliveryStatus
+  transitionDeliveryStatus,
+  updateDeliveryPartnerLiveLocation
 } from '../../services/deliveryService';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
@@ -55,6 +56,40 @@ export function DeliveryDashboardPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [errorNotice, setErrorNotice] = useState('');
+
+  // Live GPS broadcast state
+  const [gpsActive, setGpsActive] = useState(false);
+  const watchIdRef = useRef(null);
+
+  // Broadcast live GPS position during active delivery when enabled
+  useEffect(() => {
+    if (gpsActive && activeDelivery && user && typeof navigator !== 'undefined' && navigator.geolocation) {
+      try {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => {
+            updateDeliveryPartnerLiveLocation(db, user.uid, {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude
+            }).catch(() => {});
+          },
+          (err) => console.warn('Live GPS watch notice:', err),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+        );
+      } catch (e) {}
+    } else {
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    }
+
+    return () => {
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, [gpsActive, activeDelivery, user]);
 
   // Problem / Issue Modal
   const [issueModalOpen, setIssueModalOpen] = useState(false);
@@ -420,6 +455,17 @@ export function DeliveryDashboardPage() {
 
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
+                    variant={gpsActive ? "primary" : "outline"}
+                    size="md"
+                    onClick={() => setGpsActive(!gpsActive)}
+                    className={gpsActive ? "bg-emerald-800 hover:bg-emerald-900 text-white" : "border-emerald-600 text-emerald-900"}
+                    title="Broadcast your device GPS position to the route map"
+                  >
+                    <span className={`w-2 h-2 rounded-full mr-1.5 ${gpsActive ? 'bg-emerald-300 animate-pulse' : 'bg-stone-400'}`} />
+                    <span>{gpsActive ? 'Broadcasting GPS' : 'Share Live GPS'}</span>
+                  </Button>
+
+                  <Button
                     variant="outline"
                     size="md"
                     onClick={() => setMapModalDelivery({
@@ -432,9 +478,14 @@ export function DeliveryDashboardPage() {
                       longitude: activeDelivery.pickupLongitude,
                       dropoffLatitude: activeDelivery.dropoffLatitude,
                       dropoffLongitude: activeDelivery.dropoffLongitude,
+                      pickupLatitude: activeDelivery.pickupLatitude,
+                      pickupLongitude: activeDelivery.pickupLongitude,
                       address: activeDelivery.pickupAddress,
                       pickupAddress: activeDelivery.pickupAddress,
                       dropoffAddress: activeDelivery.dropoffAddress,
+                      deliveryPartnerId: user?.uid,
+                      deliveryPartnerName: profileData?.fullName,
+                      status: activeDelivery.status,
                       ...activeDelivery
                     })}
                   >

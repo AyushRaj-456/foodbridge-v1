@@ -438,10 +438,25 @@ export function AuthProvider({ children }) {
     let roleWritePromise = Promise.resolve();
 
     if (sanitizedRole === 'donor' && donorData) {
+      const pLat = Number(donorData.latitude ?? donorData.location?.latitude) || 12.9716;
+      const pLon = Number(donorData.longitude ?? donorData.location?.longitude) || 77.5946;
+      const pAddr = donorData.address || donorData.location?.address || '';
+      const pDist = donorData.district || donorData.location?.district || 'Bengaluru Urban';
+
       roleProfile = {
         userId: user.uid,
         email: user.email,
-        ...donorData
+        ...donorData,
+        latitude: pLat,
+        longitude: pLon,
+        address: pAddr,
+        district: pDist,
+        location: {
+          latitude: pLat,
+          longitude: pLon,
+          address: pAddr,
+          district: pDist
+        }
       };
       const donorRef = doc(db, 'donors', user.uid);
       roleWritePromise = setDoc(donorRef, {
@@ -450,10 +465,25 @@ export function AuthProvider({ children }) {
         updatedAt: serverTimestamp()
       }, { merge: true });
     } else if (sanitizedRole === 'recipient' && recipientData) {
+      const pLat = Number(recipientData.latitude ?? recipientData.location?.latitude) || 12.9716;
+      const pLon = Number(recipientData.longitude ?? recipientData.location?.longitude) || 77.5946;
+      const pAddr = recipientData.address || recipientData.location?.address || '';
+      const pDist = recipientData.district || recipientData.location?.district || 'Bengaluru Urban';
+
       roleProfile = {
         userId: user.uid,
         email: user.email,
         ...recipientData,
+        latitude: pLat,
+        longitude: pLon,
+        address: pAddr,
+        district: pDist,
+        location: {
+          latitude: pLat,
+          longitude: pLon,
+          address: pAddr,
+          district: pDist
+        },
         verificationStatus: 'pending',
         verifiedAt: null,
         verifiedBy: null,
@@ -466,10 +496,31 @@ export function AuthProvider({ children }) {
         updatedAt: serverTimestamp()
       }, { merge: true });
     } else if (sanitizedRole === 'delivery' && deliveryData) {
+      const pLat = Number(deliveryData.latitude ?? deliveryData.location?.latitude ?? deliveryData.homeLocation?.latitude) || 12.9716;
+      const pLon = Number(deliveryData.longitude ?? deliveryData.location?.longitude ?? deliveryData.homeLocation?.longitude) || 77.5946;
+      const pAddr = deliveryData.address || deliveryData.location?.address || deliveryData.homeLocation?.address || '';
+      const pDist = deliveryData.serviceDistrict || deliveryData.district || deliveryData.location?.district || 'Bengaluru Urban';
+
       roleProfile = {
         userId: user.uid,
         email: user.email,
         ...deliveryData,
+        latitude: pLat,
+        longitude: pLon,
+        address: pAddr,
+        serviceDistrict: pDist,
+        homeLocation: {
+          latitude: pLat,
+          longitude: pLon,
+          address: pAddr,
+          district: pDist
+        },
+        location: {
+          latitude: pLat,
+          longitude: pLon,
+          address: pAddr,
+          district: pDist
+        },
         verificationStatus: 'pending',
         verifiedAt: null,
         verifiedBy: null,
@@ -496,6 +547,11 @@ export function AuthProvider({ children }) {
         organizationName: roleProfile.organizationName || roleProfile.fullName || '',
         contactPhone: roleProfile.phone || '',
         district: roleProfile.district || roleProfile.serviceDistrict || 'Bengaluru Urban',
+        address: roleProfile.address || '',
+        latitude: roleProfile.latitude,
+        longitude: roleProfile.longitude,
+        location: roleProfile.location || roleProfile.homeLocation || null,
+        homeLocation: roleProfile.homeLocation || null,
         verificationStatus: roleProfile.verificationStatus || (sanitizedRole === 'donor' || sanitizedRole === 'visitor' ? 'verified' : 'pending')
       } : {})
     };

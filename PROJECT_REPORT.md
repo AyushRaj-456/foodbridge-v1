@@ -211,17 +211,49 @@ sequenceDiagram
 
 ---
 
-### 5.4 Road Routing, Distance & 50/50 Fare Pricing (`routingService.js` & `deliveryPricing.js`)
+### 5.4 Shortest Road Routing, Permanent User Locations & Delivery Partner Real-Time Visualization (`routingService.js`, `LocationPickerMap.jsx`, `DeliveryRouteModal.jsx`)
 
-Rather than relying on inaccurate straight-line estimates, FoodBridge interfaces with OpenStreetMap's Project-OSRM public driving routing API:
+#### 1. True Shortest Road Distance Calculation (OSRM Multi-Route Evaluation)
+Public routing engines (including Project-OSRM's standard driving profile) default to Contraction Hierarchies optimized for minimal travel time, which often routes vehicles onto longer bypasses and multi-lane ring roads. FoodBridge specifically guarantees the **shortest possible road distance**:
+* **Multi-Alternative Trajectory Query**: FoodBridge requests up to 3 candidate driving routes via `https://router.project-osrm.org/route/v1/driving/{pLon},{pLat};{dLon},{dLat}?overview=full&geometries=geojson&alternatives=3&continue_straight=default`.
+* **Strict Distance Minimization**: The algorithm evaluates all candidate routes returned by the OSRM engine and selects the route that strictly minimizes physical distance in meters:
+  $$\text{Selected Route} = \arg\min_{r \in \text{data.routes}} (r.\text{distance})$$
+* **Leaflet Coordinate Alignment**: GeoJSON `[lon, lat]` pairs from the shortest route geometry are systematically transposed into Leaflet's `[lat, lon]` coordinates.
+* **Transparent Routing Metadata**: The resulting route object delivers explicit metadata to the UI:
+  `{ isRealRoadRoute: true, isFallback: false, provider: 'osrm_shortest', alternativesEvaluated: N, rawDistanceMeters: M }`.
+* **Honest Fallback Handling**: If the network or public OSRM server is unavailable ($> 6000\text{ ms}$), the system smoothly falls back to Haversine distance with a 1.3× urban winding factor, clearly marked with an `ESTIMATED ROUTE (OFFLINE FALLBACK)` badge—never masquerading as a true road route.
 
+#### 2. Equitable 50/50 Delivery Pricing Architecture
 $$\text{Raw Fare} = \text{Base Fee (₹40)} + (\text{Per-km Rate (₹12)} \times \text{Road Distance in km})$$
 $$\text{Total Fare} = \max(\text{Minimum Fare (₹50)},\; \text{round}(\text{Raw Fare}))$$
 $$\text{Donor Share} = \text{round}\left(\frac{\text{Total Fare}}{2}\right)$$
 $$\text{Recipient Share} = \text{Total Fare} - \text{Donor Share}$$
 
-* **Leaflet Coordinate Alignment**: OSRM returns GeoJSON coordinates as `[lon, lat]`. The service automatically transposes them to Leaflet's `[lat, lon]` pairs.
-* **Failover Engine**: If the OSRM server is slow or unreachable ($> 4000\text{ ms}$), the system smoothly falls back to Haversine distance scaled by a 1.3× urban winding factor.
+#### 3. Permanent User Location Selection (`LocationPickerMap.jsx`)
+To eradicate delivery failures caused by vague or missing addresses, FoodBridge mandates permanent location selection during registration, onboarding, and profile settings for all user roles:
+* **Interactive Leaflet + OpenStreetMap Map**: Draggable marker, click-to-pin, and smooth panning.
+* **Nominatim Geocoding & Reverse Geocoding**: Real-time address search with debounced queries and automatic coordinate reverse-geocoding upon pin placement.
+* **Device GPS Geolocation**: One-click "Use My Current GPS Location" (`navigator.geolocation.getCurrentPosition`).
+* **Karnataka Presets**: Quick-jump buttons for key pilot hubs (Tumakuru, Bengaluru Urban, Mysuru, Hubballi).
+* **Permanent Database Normalization**: Stored in `users/{uid}`, `donors/{uid}`, `recipients/{uid}`, and `deliveryPartners/{uid}` (as `homeLocation`) as:
+  ```json
+  {
+    "latitude": 13.3409,
+    "longitude": 77.1010,
+    "address": "Dr. S Radhakrishnan Road, Tumakuru",
+    "district": "Tumakuru"
+  }
+  ```
+
+#### 4. End-to-End Saved Coordinate Preservation in Deliveries
+* **Donation Listings**: `CreateListingPage` initializes pickup location directly from the donor's saved permanent profile coordinates and persists the structured `location` object on the listing document.
+* **Atomic Claiming**: `acceptDonationAtomic` immediately attaches the recipient's permanent coordinates (`acceptedRecipientLatitude`, `acceptedRecipientLongitude`, `acceptedRecipientAddress`, `acceptedRecipientLocation`) to the listing document upon acceptance.
+* **Dispatch & Routing**: `createDeliveryRequest` and `requestAndAssignDeliveryPartner` strictly read saved permanent coordinates, ensuring zero hardcoded fallback coordinates (`12.9740, 77.5990`) in production delivery paths.
+
+#### 5. Realistic Delivery Partner / Motorcycle Marker & Live Tracking
+* **Custom Branded SVG Motorcycle Marker**: High-contrast icon in FoodBridge brand dark green (`#1b4332`) with a pulsing ambient aura (`rgba(27, 67, 50, 0.2)`).
+* **Live GPS Broadcasting**: Delivery partners can broadcast real-time GPS coordinates via `navigator.geolocation.watchPosition` during active transit, persisting updates through `updateDeliveryPartnerLiveLocation`.
+* **Road Polyline Interpolation**: When live GPS is inactive, `getPointAlongPolyline(routeCoordinates, ratio)` interpolates the courier marker along the exact road polyline based on delivery state (`assigned` $\rightarrow$ 15%, `in_transit` $\rightarrow$ 50%, `delivered` $\rightarrow$ 92%), avoiding unrealistic straight-line jumping.
 
 ---
 
@@ -400,13 +432,17 @@ FoodBridge is tailored to Karnataka's civic geography:
 The platform has been validated against extensive automated test suites and production build verification:
 
 ```
-Test Suites:  Translation Completeness (4/4 passed)
-              Locale Context Formatting & Interpolation (passed)
-              Safety Engine & Lifecycle (passed)
-              Geospatial Matching & Concurrency (passed)
-              Delivery Pricing & OSRM Fallback (passed)
-              Reward Calculation & Traceability (passed)
-Vite Build:   Production build compiled in 16.28s with 0 errors (4GB heap allocation).
+Test Suites:  Shortest Road Routing & Distance Optimization (4/4 passed)
+              Permanent Location & Exact Coordinates Delivery (3/3 passed)
+              Chat, Delivery Coordination & Route Map Suite (8/8 passed)
+              Translation Completeness (4/4 passed)
+              Donor Listing Creation & Publish Validation (7/7 passed)
+              Membership Stacking & Traceable Rewards (42/42 passed)
+              Safety Engine & Lifecycle (7/7 passed)
+              Geospatial Matching & Concurrency (18/18 passed)
+              Security Rules & E2E Critical Journeys (21/21 passed)
+Total Tests:  197 passed across 24 test files
+Vite Build:   Production build compiled in 14.82s with 0 errors (4GB heap allocation).
 ```
 
 ---

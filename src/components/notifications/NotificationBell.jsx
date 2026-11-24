@@ -84,7 +84,7 @@ export function NotificationBell({ onOpenChat }) {
               </span>
               {unreadCount > 0 && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-100 text-brand-900">
-                  {t('notifications.unreadCount', { count: unreadCount }, `${unreadCount} new`)}
+                  {t('notifications.unreadCount', `${unreadCount} new`, { count: unreadCount })}
                 </span>
               )}
             </div>

@@ -5,10 +5,37 @@ import hi from '../locales/hi.json';
 
 const dictionaries = { en, kn, hi };
 
+function defaultTranslate(key, fallbackOrParams = '', maybeParams = null) {
+  let fallback = '';
+  let params = null;
+  if (fallbackOrParams && typeof fallbackOrParams === 'object' && !Array.isArray(fallbackOrParams)) {
+    params = fallbackOrParams;
+    fallback = typeof maybeParams === 'string' ? maybeParams : '';
+  } else {
+    fallback = typeof fallbackOrParams === 'string' ? fallbackOrParams : '';
+    if (maybeParams && typeof maybeParams === 'object') {
+      params = maybeParams;
+    }
+  }
+
+  const keys = String(key || '').split('.');
+  let val = en;
+  for (const k of keys) {
+    if (!val || typeof val !== 'object') {
+      val = undefined;
+      break;
+    }
+    val = val[k];
+  }
+
+  const baseText = typeof val === 'string' ? val : fallback || key;
+  return params ? interpolate(baseText, params) : baseText;
+}
+
 export const LocaleContext = createContext({
   locale: 'en',
   setLocale: () => {},
-  t: (key) => key,
+  t: defaultTranslate,
   formatDate: () => '',
   formatTime: () => '',
   formatDateTime: () => '',
@@ -66,6 +93,7 @@ export function LocaleProvider({ children }) {
 
     if (fallbackOrParams && typeof fallbackOrParams === 'object' && !Array.isArray(fallbackOrParams)) {
       params = fallbackOrParams;
+      fallback = typeof maybeParams === 'string' ? maybeParams : '';
     } else {
       fallback = typeof fallbackOrParams === 'string' ? fallbackOrParams : '';
       if (maybeParams && typeof maybeParams === 'object') {

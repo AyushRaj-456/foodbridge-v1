@@ -202,10 +202,10 @@
     "title": "Food / Material Title",
     "description": "Description & Specifics",
     "quantity": "Quantity",
-    "unit": "Unit",
+    "unit": "Measurement Unit",
     "category": "Donor Category",
-    "foodState": "Food State",
-    "storageCondition": "Storage Condition",
+    "foodState": "Food State / Condition",
+    "storageCondition": "Current Storage & Holding Condition",
     "prepTime": "Preparation / Packaging Time",
     "safeUseDeadline": "Safe-Use / Collection Deadline",
     "isVegetarian": "Vegetarian",
@@ -252,8 +252,8 @@
     "spoiledExpired": "Spoiled / Expired Organic Residues"
   },
   "recipient": {
-    "availableDonations": "Available Surplus Food",
-    "acceptedDonations": "Accepted Allocations",
+    "availableDonations": "Available Donations",
+    "acceptedDonations": "Accepted / Handover",
     "capacityAlerts": "Capacity & Alerts",
     "history": "Donation History",
     "acceptFood": "Accept Food",
@@ -292,7 +292,9 @@
     "confirmDropoffDone": "Confirm Delivery Complete",
     "noDeliveriesFound": "No delivery tasks currently available in your area.",
     "pickupFrom": "Pickup from",
-    "dropoffTo": "Deliver to"
+    "dropoffTo": "Deliver to",
+    "shareLiveGps": "Share Live GPS",
+    "broadcastingGps": "Broadcasting GPS"
   },
   "admin": {
     "workspaceTitle": "Admin Operations Workspace",
@@ -514,7 +516,8 @@
   },
   "chat": {
     "title": "Donation Coordination Chat",
-    "placeholder": "Type a message...",
+    "placeholder": "Type a message to coordinate pickup or delivery...",
+    "inputPlaceholder": "Coordinate pickup or delivery...",
     "send": "Send",
     "empty": "No messages yet. Send a message to coordinate pickup.",
     "participants": "Participants"
@@ -523,8 +526,21 @@
     "title": "Delivery Route Map",
     "pickup": "Pickup Location",
     "dropoff": "Dropoff Location",
-    "distance": "Distance",
-    "eta": "Estimated Time"
+    "distance": "Road Distance",
+    "eta": "Estimated Time",
+    "shortestRoadRoute": "Shortest Road Route",
+    "offlineFallback": "Estimated Route (Offline Fallback)",
+    "motorcycle": "Motorcycle",
+    "courierMarker": "Delivery Partner",
+    "liveGps": "Live GPS Tracking",
+    "enRouteRoad": "Delivery Partner En Route (Road Path)"
+  },
+  "location": {
+    "pickerTitle": "Permanent Location",
+    "searchPlaceholder": "Search area, landmark or street...",
+    "myGps": "My GPS",
+    "selectedPermanentAddress": "Selected Permanent Address",
+    "adjustPinHint": "Click map or drag pin to adjust"
   },
   "profile": {
     "title": "Account & Profile Settings",

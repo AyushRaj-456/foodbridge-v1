@@ -118,11 +118,29 @@ export async function acceptDonationAtomic(db, listingId, recipientId, recipient
     const newCommitted = currentCommitted + requestedQty;
     const newAvailable = calculateAvailableCapacity(maxCap, newCommitted, recipient.operationalLimit);
 
-    // Update listing
+    // Extract exact permanent recipient coordinates and address
+    const recLat = Number(recipient.location?.latitude ?? recipient.latitude ?? recipientProfileData?.location?.latitude ?? recipientProfileData?.latitude);
+    const recLon = Number(recipient.location?.longitude ?? recipient.longitude ?? recipientProfileData?.location?.longitude ?? recipientProfileData?.longitude);
+    const recAddr = recipient.location?.address || recipient.address || recipientProfileData?.location?.address || recipientProfileData?.address || '';
+    const recDist = recipient.location?.district || recipient.district || recipientProfileData?.location?.district || recipientProfileData?.district || 'Bengaluru Urban';
+    const recPhone = recipient.phone || recipientProfileData?.phone || '';
+
+    // Update listing with exact recipient coordinates for delivery routing
     transaction.update(listingRef, {
       status: 'accepted',
       acceptedRecipientId: recipientId,
       acceptedRecipientName: recipient.organizationName || recipientProfileData?.organizationName || 'Verified Organization',
+      acceptedRecipientAddress: recAddr,
+      acceptedRecipientDistrict: recDist,
+      acceptedRecipientLatitude: !isNaN(recLat) && recLat !== 0 ? recLat : 12.9716,
+      acceptedRecipientLongitude: !isNaN(recLon) && recLon !== 0 ? recLon : 77.5946,
+      acceptedRecipientPhone: recPhone,
+      acceptedRecipientLocation: {
+        latitude: !isNaN(recLat) && recLat !== 0 ? recLat : 12.9716,
+        longitude: !isNaN(recLon) && recLon !== 0 ? recLon : 77.5946,
+        address: recAddr,
+        district: recDist
+      },
       acceptedAt: serverTimestamp(),
       deliveryMode: 'direct_pickup',
       updatedAt: serverTimestamp()
