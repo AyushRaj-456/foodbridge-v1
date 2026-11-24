@@ -46,6 +46,31 @@ export async function getUserWallet(dbInstance = db, userId) {
 
   const database = dbInstance || db;
 
+  // Verify role: Recipients do not participate in token rewards
+  try {
+    const uSnap = await getDoc(doc(database, 'users', userId));
+    if (uSnap.exists()) {
+      const uData = uSnap.data();
+      if (uData.activeRole === 'recipient' || (uData.roles?.includes('recipient') && !uData.roles?.includes('donor'))) {
+        return {
+          userId,
+          totalTokensEarned: 0,
+          availableTokens: 0,
+          reservedTokens: 0,
+          redeemedTokens: 0,
+          totalRedeemedValue: 0,
+          estimatedRedeemableValue: 0,
+          batches: [],
+          batchesByPlan: {
+            fuel_support: { planName: 'Fuel Support', tokensEarned: 0, remainingTokens: 0, valueINR: 0, ratePer100: 2 },
+            corridor_help: { planName: 'Corridor Help', tokensEarned: 0, remainingTokens: 0, valueINR: 0, ratePer100: 6 }
+          },
+          membership: null
+        };
+      }
+    }
+  } catch (e) {}
+
   try {
     // 1. Fetch wallet doc, ledger batches, and current membership in parallel
     const walletRef = doc(database, 'wallets', userId);
@@ -198,7 +223,20 @@ export async function requestTokenRedemption(dbInstance = db, {
 
   const database = dbInstance || db;
 
-  // 1. Verify Active Membership
+  // 1. Verify Donor Role (Recipients cannot submit redemptions)
+  try {
+    const userDocSnap = await getDoc(doc(database, 'users', userId));
+    if (userDocSnap.exists()) {
+      const uData = userDocSnap.data();
+      if (uData.activeRole === 'recipient' || (uData.roles?.includes('recipient') && !uData.roles?.includes('donor'))) {
+        throw new Error('Token redemptions are exclusively available for Donors.');
+      }
+    }
+  } catch (err) {
+    if (err.message.includes('exclusively available for Donors')) throw err;
+  }
+
+  // 2. Verify Active Membership
   const membership = await getUserMembership(database, userId);
   if (!membership.isActive) {
     throw new Error('Active membership required to redeem tokens. Please renew your support membership.');

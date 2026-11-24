@@ -384,7 +384,7 @@ export function LandingPage() {
               Support FoodBridge With a Voluntary Contribution
             </h2>
             <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
-              Voluntary contributions keep zero-waste food rescue active in Karnataka. Memberships enable token earnings and redemptions for Donors and verified NGOs.
+              Voluntary contributions keep zero-waste food rescue active in Karnataka. Memberships enable token earnings and redemptions exclusively for Donors (100% free for NGOs).
             </p>
           </div>
 
@@ -433,7 +433,7 @@ export function LandingPage() {
                   <h3 className="font-bold text-stone-900 text-base">Fuel Support</h3>
                   <div className="text-2xl font-black text-stone-900 font-mono mt-1">₹100</div>
                   <p className="text-xs text-stone-600 mt-2 leading-relaxed">
-                    Activates a 30-day membership. Earn 10 tokens (Donor) or 5 tokens (NGO) on completed handovers.
+                    Activates a 30-day membership for Donors. Earn 10 tokens on completed handovers.
                   </p>
                   <div className="mt-3 p-2.5 rounded-lg bg-emerald-100/60 border border-emerald-200 text-[11px] font-semibold text-emerald-900">
                     Redemption Rate: ₹2 per 100 tokens

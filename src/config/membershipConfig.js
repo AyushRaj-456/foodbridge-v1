@@ -28,7 +28,7 @@ export const SUPPORT_PLANS = {
     redemptionRatePer100: 2, // ₹2 per 100 tokens
     ratePerToken: 0.02,
     badge: '30-Day Membership',
-    description: 'Activates a 30-day membership. Eligible Donors & NGOs earn tokens on completed donations. Redeem at ₹2 per 100 tokens.'
+    description: 'Activates a 30-day membership for Donors. Eligible Donors earn tokens on completed donations. Redeem at ₹2 per 100 tokens.'
   },
   CORRIDOR_HELP: {
     id: 'corridor_help',
@@ -40,17 +40,17 @@ export const SUPPORT_PLANS = {
     redemptionRatePer100: 6, // ₹6 per 100 tokens
     ratePerToken: 0.06,
     badge: '30-Day Membership',
-    description: 'Activates a 30-day membership. Eligible Donors & NGOs earn tokens on completed donations. Redeem at ₹6 per 100 tokens.'
+    description: 'Activates a 30-day membership for Donors. Eligible Donors earn tokens on completed donations. Redeem at ₹6 per 100 tokens.'
   }
 };
 
 export const REWARD_RULES = {
   DONOR_REWARD_TOKENS: 10,
-  RECIPIENT_REWARD_TOKENS: 5,
+  RECIPIENT_REWARD_TOKENS: 0, // Recipients are 100% free and do not earn tokens
   GLOBAL_DAILY_LIMIT: 5, // Max 5 reward-eligible donations platform-wide per IST calendar day
   PAIR_DAILY_LIMIT: 2,   // Max 2 reward-eligible donations per Donor-NGO pair per IST calendar day
   MIN_REDEMPTION_TOKENS: 100, // Minimum 100 tokens, must be multiple of 100
-  ELIGIBLE_ROLES: ['donor', 'recipient'] // Couriers/delivery partners explicitly excluded
+  ELIGIBLE_ROLES: ['donor'] // Exclusively Donors; couriers and recipients excluded
 };
 
 /**

@@ -22,7 +22,7 @@ export function PaymentModal({
   onClose,
   onSuccess
 }) {
-  const { user, profileData } = useAuth();
+  const { user, userDoc, profileData } = useAuth();
   const plan = getPlanById(planId);
 
   const [processing, setProcessing] = useState(false);
@@ -39,6 +39,12 @@ export function PaymentModal({
 
     if (processing) return; // Prevent duplicate rapid clicks
 
+    // Recipients are 100% free and strictly excluded from purchasing memberships
+    if (userDoc?.activeRole === 'recipient' || (userDoc?.roles?.includes('recipient') && !userDoc?.roles?.includes('donor'))) {
+      setErrorMsg('Support memberships are exclusively for Donors. FoodBridge is 100% free for Recipient organizations.');
+      return;
+    }
+
     try {
       setProcessing(true);
       setErrorMsg('');
@@ -47,6 +53,7 @@ export function PaymentModal({
         userId: user.uid,
         userEmail: user.email || '',
         userName: profileData?.organizationName || profileData?.fullName || user.displayName || 'Supporter',
+        userRole: userDoc?.activeRole || 'donor',
         planId: plan.id,
         customAmount: plan.amount
       });

@@ -10,7 +10,8 @@ import {
 import {
   isMembershipActive,
   getUserMembership,
-  processSimulatedSupportPayment
+  processSimulatedSupportPayment,
+  cleanupRecipientMemberships
 } from '../services/membershipService';
 import { processDonationCompletionRewards } from '../services/rewardService';
 import {
@@ -82,12 +83,12 @@ describe('Support Membership, Reward Tokens & Redemption Suite', () => {
       expect(getISTDateString(d2)).toBe('2026-11-25');
     });
 
-    it('enforces exclusion of delivery partners from token reward rules', () => {
+    it('enforces that token reward rules are exclusively for donors (recipients and couriers excluded)', () => {
       expect(REWARD_RULES.ELIGIBLE_ROLES).toContain('donor');
-      expect(REWARD_RULES.ELIGIBLE_ROLES).toContain('recipient');
+      expect(REWARD_RULES.ELIGIBLE_ROLES).not.toContain('recipient');
       expect(REWARD_RULES.ELIGIBLE_ROLES).not.toContain('delivery');
       expect(REWARD_RULES.DONOR_REWARD_TOKENS).toBe(10);
-      expect(REWARD_RULES.RECIPIENT_REWARD_TOKENS).toBe(5);
+      expect(REWARD_RULES.RECIPIENT_REWARD_TOKENS).toBe(0);
     });
   });
 
@@ -137,6 +138,27 @@ describe('Support Membership, Reward Tokens & Redemption Suite', () => {
       expect(isMembershipActive(futureDate)).toBe(true);
       expect(isMembershipActive(pastDate)).toBe(false);
       expect(isMembershipActive(null)).toBe(false);
+    });
+
+    it('strictly prevents Recipient accounts from purchasing or activating memberships', async () => {
+      const mockDb = {};
+      await expect(
+        processSimulatedSupportPayment(mockDb, {
+          userId: 'recipient_user_01',
+          userEmail: 'ngo@shelter.org',
+          userName: 'Hope Orphanage',
+          userRole: 'recipient',
+          planId: 'fuel_support'
+        })
+      ).rejects.toThrow(/Support memberships are exclusively for Donors/i);
+    });
+
+    it('safely runs cleanup of recipient memberships without throwing errors', async () => {
+      const mockDb = {};
+      const res = await cleanupRecipientMemberships(mockDb);
+      expect(res).toBeDefined();
+      expect(typeof res.cleanedMemberships).toBe('number');
+      expect(typeof res.cleanedWallets).toBe('number');
     });
   });
 
@@ -297,6 +319,23 @@ describe('Support Membership, Reward Tokens & Redemption Suite', () => {
           upiId: 'test@upi'
         })
       ).rejects.toThrow(/multiples of 100 tokens/i);
+    });
+
+    it('strictly prevents Recipient accounts from submitting redemption requests', async () => {
+      const mockDb = {};
+      const { getDoc } = await import('../services/firebase');
+      getDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ activeRole: 'recipient', roles: ['recipient'] })
+      });
+
+      await expect(
+        requestTokenRedemption(mockDb, {
+          userId: 'recipient_user_02',
+          tokensToRedeem: 100,
+          upiId: 'ngo@okaxis'
+        })
+      ).rejects.toThrow(/exclusively available for Donors/i);
     });
   });
 });

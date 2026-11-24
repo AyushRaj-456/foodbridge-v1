@@ -25,6 +25,7 @@ import {
   onSnapshot,
   serverTimestamp,
   addDoc,
+  deleteDoc,
   limit,
   arrayUnion,
   orderBy
@@ -107,6 +108,7 @@ export {
   onSnapshot,
   serverTimestamp,
   addDoc,
+  deleteDoc,
   limit,
   arrayUnion,
   orderBy,

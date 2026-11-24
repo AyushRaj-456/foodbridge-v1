@@ -57,29 +57,23 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
     return { success: false, reason: 'already_rewarded', donationId };
   }
 
-  // 2. Check memberships at this exact completion moment
-  const [donorMem, recipientMem] = await Promise.all([
-    getUserMembership(database, donorId),
-    getUserMembership(database, recipientId)
-  ]);
-
+  // 2. Check Donor membership at this exact completion moment (Recipient does not need membership)
+  const donorMem = await getUserMembership(database, donorId);
   const donorEligible = donorMem.isActive && Boolean(donorMem.canEarnTokens);
-  const recipientEligible = recipientMem.isActive && Boolean(recipientMem.canEarnTokens);
 
-  // If neither participant has an active membership with token benefits, no tokens to award
-  if (!donorEligible && !recipientEligible) {
+  // If Donor does not have an active membership with token benefits, no tokens to award
+  if (!donorEligible) {
     try {
       await setDoc(doc(database, 'listings', donationId), {
         rewardProcessed: true,
         rewardEligibility: {
-          status: 'no_active_members',
+          status: 'no_active_donor_member',
           donorEligible: false,
-          recipientEligible: false,
           checkedAt: serverTimestamp()
         }
       }, { merge: true });
     } catch (e) {}
-    return { success: false, reason: 'no_active_members', donationId };
+    return { success: false, reason: 'no_active_donor_member', donationId };
   }
 
   const dateIST = getISTDateString(new Date());
@@ -156,103 +150,58 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
 
       const now = new Date();
       const timestampMs = now.getTime();
-      let donorTokensAwarded = 0;
-      let recipientTokensAwarded = 0;
+      const donorTokensAwarded = REWARD_RULES.DONOR_REWARD_TOKENS; // 10 tokens exclusively for Donor
 
-      // Award Donor Tokens (10 tokens) if Donor has active membership
-      if (donorEligible) {
-        donorTokensAwarded = REWARD_RULES.DONOR_REWARD_TOKENS;
-        const donorRate = donorMem.planDetails.ratePerToken;
-        const donorRatePer100 = donorMem.planDetails.redemptionRatePer100;
-        const donorBatchId = `LEDGER_${timestampMs}_donor_${donationId}`;
-        const donorLedgerRef = doc(database, 'rewardLedger', donorBatchId);
+      // Award Donor Tokens (10 tokens)
+      const donorRate = donorMem.planDetails.ratePerToken;
+      const donorRatePer100 = donorMem.planDetails.redemptionRatePer100;
+      const donorBatchId = `LEDGER_${timestampMs}_donor_${donationId}`;
+      const donorLedgerRef = doc(database, 'rewardLedger', donorBatchId);
 
-        transaction.set(donorLedgerRef, {
-          batchId: donorBatchId,
-          userId: donorId,
-          role: 'donor',
-          donationId,
-          donationTitle: donation.title || 'Food Donation',
-          tokensEarned: donorTokensAwarded,
-          planAtEarning: donorMem.activePlan,
-          planNameAtEarning: donorMem.planDetails.name,
-          redemptionRate: donorRate,
-          redemptionRatePer100: donorRatePer100,
-          rewardValue: Math.round(donorTokensAwarded * donorRate * 100) / 100,
-          redeemedTokens: 0,
-          reservedTokens: 0,
-          remainingTokens: donorTokensAwarded,
-          timestampMs,
-          createdAt: serverTimestamp()
-        });
+      transaction.set(donorLedgerRef, {
+        batchId: donorBatchId,
+        userId: donorId,
+        role: 'donor',
+        donationId,
+        donationTitle: donation.title || 'Food Donation',
+        tokensEarned: donorTokensAwarded,
+        planAtEarning: donorMem.activePlan,
+        planNameAtEarning: donorMem.planDetails.name,
+        redemptionRate: donorRate,
+        redemptionRatePer100: donorRatePer100,
+        rewardValue: Math.round(donorTokensAwarded * donorRate * 100) / 100,
+        redeemedTokens: 0,
+        reservedTokens: 0,
+        remainingTokens: donorTokensAwarded,
+        timestampMs,
+        createdAt: serverTimestamp()
+      });
 
-        const donorWalletRef = doc(database, 'wallets', donorId);
-        const donorWalletSnap = await transaction.get(donorWalletRef);
-        const dWallet = donorWalletSnap.exists() ? donorWalletSnap.data() : {};
+      const donorWalletRef = doc(database, 'wallets', donorId);
+      const donorWalletSnap = await transaction.get(donorWalletRef);
+      const dWallet = donorWalletSnap.exists() ? donorWalletSnap.data() : {};
 
-        transaction.set(donorWalletRef, {
-          userId: donorId,
-          totalTokensEarned: (dWallet.totalTokensEarned || 0) + donorTokensAwarded,
-          availableTokens: (dWallet.availableTokens || 0) + donorTokensAwarded,
-          reservedTokens: dWallet.reservedTokens || 0,
-          redeemedTokens: dWallet.redeemedTokens || 0,
-          totalRedeemedValue: dWallet.totalRedeemedValue || 0,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      }
+      transaction.set(donorWalletRef, {
+        userId: donorId,
+        userRole: 'donor',
+        totalTokensEarned: (dWallet.totalTokensEarned || 0) + donorTokensAwarded,
+        availableTokens: (dWallet.availableTokens || 0) + donorTokensAwarded,
+        reservedTokens: dWallet.reservedTokens || 0,
+        redeemedTokens: dWallet.redeemedTokens || 0,
+        totalRedeemedValue: dWallet.totalRedeemedValue || 0,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
 
-      // Award NGO / Recipient Tokens (5 tokens) if NGO has active membership
-      if (recipientEligible) {
-        recipientTokensAwarded = REWARD_RULES.RECIPIENT_REWARD_TOKENS;
-        const recipRate = recipientMem.planDetails.ratePerToken;
-        const recipRatePer100 = recipientMem.planDetails.redemptionRatePer100;
-        const recipBatchId = `LEDGER_${timestampMs}_recip_${donationId}`;
-        const recipLedgerRef = doc(database, 'rewardLedger', recipBatchId);
-
-        transaction.set(recipLedgerRef, {
-          batchId: recipBatchId,
-          userId: recipientId,
-          role: 'recipient',
-          donationId,
-          donationTitle: donation.title || 'Food Donation',
-          tokensEarned: recipientTokensAwarded,
-          planAtEarning: recipientMem.activePlan,
-          planNameAtEarning: recipientMem.planDetails.name,
-          redemptionRate: recipRate,
-          redemptionRatePer100: recipRatePer100,
-          rewardValue: Math.round(recipientTokensAwarded * recipRate * 100) / 100,
-          redeemedTokens: 0,
-          reservedTokens: 0,
-          remainingTokens: recipientTokensAwarded,
-          timestampMs,
-          createdAt: serverTimestamp()
-        });
-
-        const recipWalletRef = doc(database, 'wallets', recipientId);
-        const recipWalletSnap = await transaction.get(recipWalletRef);
-        const rWallet = recipWalletSnap.exists() ? recipWalletSnap.data() : {};
-
-        transaction.set(recipWalletRef, {
-          userId: recipientId,
-          totalTokensEarned: (rWallet.totalTokensEarned || 0) + recipientTokensAwarded,
-          availableTokens: (rWallet.availableTokens || 0) + recipientTokensAwarded,
-          reservedTokens: rWallet.reservedTokens || 0,
-          redeemedTokens: rWallet.redeemedTokens || 0,
-          totalRedeemedValue: rWallet.totalRedeemedValue || 0,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      }
-
-      // Mark listing as rewarded
+      // Mark listing as rewarded (Donor only rewarded)
       transaction.set(listingRef, {
         rewardProcessed: true,
         rewardEligibility: {
           status: 'rewarded',
           dateIST,
-          donorAwarded: donorEligible,
+          donorAwarded: true,
           donorTokens: donorTokensAwarded,
-          recipientAwarded: recipientEligible,
-          recipientTokens: recipientTokensAwarded,
+          recipientAwarded: false,
+          recipientTokens: 0,
           globalCount: newGlobalCount,
           pairCount: newPairCount,
           awardedAt: serverTimestamp()
@@ -262,10 +211,10 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
       return {
         success: true,
         dateIST,
-        donorAwarded: donorEligible,
+        donorAwarded: true,
         donorTokens: donorTokensAwarded,
-        recipientAwarded: recipientEligible,
-        recipientTokens: recipientTokensAwarded,
+        recipientAwarded: false,
+        recipientTokens: 0,
         globalCount: newGlobalCount,
         pairCount: newPairCount
       };

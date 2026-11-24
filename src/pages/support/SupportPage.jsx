@@ -19,13 +19,16 @@ import {
   Sparkles,
   QrCode,
   CreditCard,
-  Coins
+  Coins,
+  Building2
 } from 'lucide-react';
 
 export function SupportPage() {
   const { t } = useLocale();
-  const { user } = useAuth();
+  const { user, userDoc, profileData } = useAuth();
   const configuredUpiId = import.meta.env.VITE_CONTRIBUTION_UPI_ID || '';
+
+  const isRecipient = userDoc?.activeRole === 'recipient' || profileData?.role === 'recipient' || (userDoc?.roles?.includes('recipient') && !userDoc?.roles?.includes('donor'));
 
   const [copied, setCopied] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState('fuel_support');
@@ -52,7 +55,7 @@ export function SupportPage() {
       id: 'fuel_support',
       amount: 100,
       label: 'Fuel Support',
-      desc: '30-day membership. Earn tokens on handovers. Redeem at ₹2 / 100 tokens.',
+      desc: '30-day membership for Donors. Earn tokens on handovers. Redeem at ₹2 / 100 tokens.',
       badge: '30-Day Pass',
       badgeClass: 'bg-emerald-100 text-emerald-800'
     },
@@ -60,7 +63,7 @@ export function SupportPage() {
       id: 'corridor_help',
       amount: 250,
       label: 'Corridor Help',
-      desc: '30-day membership. Earn tokens on handovers. Redeem at ₹6 / 100 tokens.',
+      desc: '30-day membership for Donors. Earn tokens on handovers. Redeem at ₹6 / 100 tokens.',
       badge: 'Premium Pass',
       badgeClass: 'bg-brand-100 text-brand-900'
     }
@@ -158,9 +161,27 @@ export function SupportPage() {
           </div>
         </div>
 
-        {/* Right Column: Support Plans & Simulated Checkout */}
+        {/* Right Column: Support Plans & Simulated Checkout (Donors/Visitors Only) */}
         <div>
-          <Card className="p-6 sm:p-8 space-y-6 border-brand-200 bg-white shadow-sm">
+          {isRecipient ? (
+            <Card className="p-6 sm:p-8 space-y-5 border-emerald-300 bg-emerald-50/40 shadow-sm text-center">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto border border-emerald-200">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-stone-900 text-lg">100% Free for Recipient Organizations</h3>
+              <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+                As a verified NGO or beneficiary shelter, you are never asked to purchase a membership or make financial contributions. All food redistribution, listing access, and direct intake are completely free of charge.
+              </p>
+              <div className="pt-3">
+                <Link to="/recipient">
+                  <Button variant="primary" size="md" className="w-full justify-center">
+                    Return to Recipient Dashboard
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          ) : (
+            <Card className="p-6 sm:p-8 space-y-6 border-brand-200 bg-white shadow-sm">
             <div className="flex items-center justify-between pb-4 border-b border-border">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-900 flex items-center justify-center border border-emerald-200">
@@ -219,7 +240,7 @@ export function SupportPage() {
               {currentSelectedTier.id !== 'coffee' && (
                 <div className="pt-2 border-t border-border/80 flex items-center gap-1.5 text-emerald-800 font-semibold text-[11px]">
                   <Coins className="w-3.5 h-3.5" />
-                  <span>Tokens rewarded on completed handovers (10 Donor / 5 NGO)</span>
+                  <span>Tokens rewarded on completed handovers (10 tokens for Donors)</span>
                 </div>
               )}
             </div>
@@ -290,6 +311,7 @@ export function SupportPage() {
               </p>
             </div>
           </Card>
+          )}
         </div>
       </div>
 

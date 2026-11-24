@@ -55,21 +55,29 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
       setLoading(true);
       setErrorNotice('');
 
-      // 1. Fetch support transactions
+      // 1. Fetch support transactions (Donors only)
       const txns = await getSupportTransactions(db, { limitCount: 100 });
-      setTransactions(txns);
+      const donorTxns = txns.filter((t) => !t.userRole || t.userRole === 'donor');
+      setTransactions(donorTxns);
 
-      // 2. Fetch memberships
+      // 2. Fetch memberships (Donors only)
       const memSnap = await getDocs(query(collection(db, 'memberships'), limit(100)));
-      setMemberships(memSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const donorMems = memSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => !m.userRole || m.userRole === 'donor');
+      setMemberships(donorMems);
 
-      // 3. Fetch redemptions
+      // 3. Fetch redemptions (Donors only)
       const redList = await getRedemptionRequests(db, { limitCount: 100 });
-      setRedemptions(redList);
+      const donorReds = redList.filter((r) => !r.userRole || r.userRole === 'donor');
+      setRedemptions(donorReds);
 
-      // 4. Fetch reward ledger
+      // 4. Fetch reward ledger (Donors only)
       const ledSnap = await getDocs(query(collection(db, 'rewardLedger'), limit(200)));
-      setLedgerBatches(ledSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const donorLedgers = ledSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((b) => b.role === 'donor');
+      setLedgerBatches(donorLedgers);
 
       // 5. Fetch daily global counter for today
       try {
@@ -208,7 +216,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <span>Memberships & Contributions</span>
+          <span>Donor Memberships & Contributions</span>
           <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-stone-600">
             {transactions.length}
           </span>
@@ -238,7 +246,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <span>Token Redemptions</span>
+          <span>Donor Redemptions</span>
           {pendingRedemptions.length > 0 && (
             <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800 font-bold">
               {pendingRedemptions.length} pending
@@ -257,7 +265,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                 {activeMembershipsCount}
               </span>
               <span className="block text-xs font-semibold text-emerald-800 mt-0.5">
-                Active Memberships
+                Active Donor Memberships
               </span>
             </Card>
 
@@ -266,7 +274,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                 {expiredMembershipsCount}
               </span>
               <span className="block text-xs font-semibold text-stone-500 mt-0.5">
-                Expired Memberships
+                Expired Donor Memberships
               </span>
             </Card>
 
@@ -275,7 +283,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                 ₹{totalRevenue}
               </span>
               <span className="block text-xs font-semibold text-brand-900 mt-0.5">
-                Total Contributions
+                Total Donor Contributions
               </span>
             </Card>
 
@@ -284,7 +292,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                 {transactions.length}
               </span>
               <span className="block text-xs font-semibold text-stone-600 mt-0.5">
-                Transactions Logged
+                Donor Transactions Logged
               </span>
             </Card>
           </div>
@@ -292,7 +300,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
           {/* Support Transactions Table */}
           <Card className="p-5 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-border">
-              <h3 className="font-bold text-stone-900 text-sm">Support Contributions Log</h3>
+              <h3 className="font-bold text-stone-900 text-sm">Donor Support Contributions Log</h3>
               <Button variant="outline" size="sm" onClick={loadAllAdminData} disabled={loading}>
                 <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
@@ -483,7 +491,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                   <thead className="bg-surface-muted text-stone-600 font-semibold border-b border-border">
                     <tr>
                       <th className="py-2.5 px-3">Request ID</th>
-                      <th className="py-2.5 px-3">User UID</th>
+                      <th className="py-2.5 px-3">Donor UID</th>
                       <th className="py-2.5 px-3">Tokens</th>
                       <th className="py-2.5 px-3">Payout ₹</th>
                       <th className="py-2.5 px-3">UPI Destination</th>

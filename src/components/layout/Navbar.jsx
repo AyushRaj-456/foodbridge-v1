@@ -57,16 +57,16 @@ export function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const activeRole = userDoc?.activeRole || userDoc?.roles?.[0] || 'donor';
+  const verificationStatus = profileData?.verificationStatus || 'pending';
+
   const navLinks = [
     { href: '/', label: t('nav.home', 'Home') },
     { href: '/#how-it-works', label: t('nav.howItWorks', 'How it works') },
     { href: '/#recipients', label: t('nav.recipients', 'Recipients') },
     { href: '/#impact', label: t('nav.impact', 'Impact') },
-    { href: '/support', label: t('nav.support', 'Support Us') },
+    ...(activeRole !== 'recipient' ? [{ href: '/support', label: t('nav.support', 'Support Us') }] : []),
   ];
-
-  const activeRole = userDoc?.activeRole || userDoc?.roles?.[0] || 'donor';
-  const verificationStatus = profileData?.verificationStatus || 'pending';
 
   return (
     <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur-md border-b border-border transition-colors">

@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
   collection,
   query,
   where,
@@ -92,6 +93,23 @@ export async function getUserMembership(dbInstance = db, userId) {
     }
 
     const data = snap.data();
+    // Exclusively Donors are eligible for memberships
+    if (data.userRole && data.userRole !== 'donor') {
+      return {
+        exists: false,
+        userId,
+        activePlan: null,
+        planDetails: null,
+        status: 'none',
+        isActive: false,
+        activatedAt: null,
+        expiresAt: null,
+        daysRemaining: 0,
+        canEarnTokens: false,
+        redemptionRatePer100: 0
+      };
+    }
+
     const expiresAt = data.expiresAt?.toDate ? data.expiresAt.toDate() : (data.expiresAt ? new Date(data.expiresAt) : null);
     const activatedAt = data.activatedAt?.toDate ? data.activatedAt.toDate() : (data.activatedAt ? new Date(data.activatedAt) : null);
 
@@ -216,6 +234,7 @@ export async function processSimulatedSupportPayment(dbInstance = db, {
   userId,
   userEmail = '',
   userName = 'Community Supporter',
+  userRole = 'donor',
   planId,
   customAmount = null
 }) {
@@ -223,11 +242,30 @@ export async function processSimulatedSupportPayment(dbInstance = db, {
   const plan = getPlanById(planId);
   if (!plan) throw new Error(`Invalid support plan: "${planId}"`);
 
+  const database = dbInstance || db;
+
+  // Strict validation: Recipients/NGOs are never allowed to purchase or activate memberships
+  let effectiveRole = userRole;
+  if (effectiveRole === 'recipient') {
+    throw new Error('Support memberships are exclusively for Donors. FoodBridge is 100% free for Recipient organizations.');
+  }
+
+  // Double check from users collection if not explicitly passed as recipient
+  try {
+    const userDocSnap = await getDoc(doc(database, 'users', userId));
+    if (userDocSnap.exists()) {
+      const uData = userDocSnap.data();
+      if (uData.activeRole === 'recipient' || (uData.roles?.includes('recipient') && !uData.roles?.includes('donor'))) {
+        throw new Error('Support memberships are exclusively for Donors. FoodBridge is 100% free for Recipient organizations.');
+      }
+    }
+  } catch (err) {
+    if (err.message.includes('Support memberships are exclusively for Donors')) throw err;
+  }
+
   const amount = Number(customAmount) || plan.amount;
   const now = new Date();
   const txId = `TXN_DEMO_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-
-  const database = dbInstance || db;
 
   // 1. Record support contribution transaction
   const txRef = doc(database, 'supportTransactions', txId);
@@ -236,6 +274,7 @@ export async function processSimulatedSupportPayment(dbInstance = db, {
     userId,
     userEmail: userEmail || '',
     userName: userName || 'Community Supporter',
+    userRole: 'donor',
     planId: plan.id,
     planName: plan.name,
     amount,
@@ -275,6 +314,7 @@ export async function processSimulatedSupportPayment(dbInstance = db, {
 
     const membershipData = {
       userId,
+      userRole: 'donor',
       activePlan: plan.id,
       planName: plan.name,
       status: 'active',
@@ -334,4 +374,63 @@ export async function getSupportTransactions(dbInstance = db, { userId = null, l
       return [];
     }
   }
+}
+
+/**
+ * Safely cleans up any legacy recipient membership or wallet documents without
+ * altering donations, profiles, user records, or conversations.
+ *
+ * @param {Object} [dbInstance=db]
+ * @returns {Promise<{ cleanedMemberships: number, cleanedWallets: number }>}
+ */
+export async function cleanupRecipientMemberships(dbInstance = db) {
+  const database = dbInstance || db;
+  let cleanedMemberships = 0;
+  let cleanedWallets = 0;
+
+  try {
+    const memSnap = await getDocs(collection(database, 'memberships'));
+    for (const memDoc of memSnap.docs) {
+      const mData = memDoc.data();
+      const uid = memDoc.id;
+      let isRecipient = mData.userRole === 'recipient';
+      if (!isRecipient) {
+        try {
+          const userSnap = await getDoc(doc(database, 'users', uid));
+          if (userSnap.exists()) {
+            const uData = userSnap.data();
+            if (uData.activeRole === 'recipient' || (uData.roles?.includes('recipient') && !uData.roles?.includes('donor'))) {
+              isRecipient = true;
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (isRecipient) {
+        try {
+          await deleteDoc(doc(database, 'memberships', uid));
+          cleanedMemberships++;
+        } catch (e) {}
+      }
+    }
+
+    const walletSnap = await getDocs(collection(database, 'wallets'));
+    for (const wDoc of walletSnap.docs) {
+      const uid = wDoc.id;
+      try {
+        const userSnap = await getDoc(doc(database, 'users', uid));
+        if (userSnap.exists()) {
+          const uData = userSnap.data();
+          if (uData.activeRole === 'recipient' || (uData.roles?.includes('recipient') && !uData.roles?.includes('donor'))) {
+            await deleteDoc(doc(database, 'wallets', uid));
+            cleanedWallets++;
+          }
+        }
+      } catch (e) {}
+    }
+  } catch (err) {
+    console.warn('Notice during recipient membership cleanup:', err.message);
+  }
+
+  return { cleanedMemberships, cleanedWallets };
 }
