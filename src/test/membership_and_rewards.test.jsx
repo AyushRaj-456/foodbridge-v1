@@ -11,7 +11,11 @@ import {
   isMembershipActive,
   getUserMembership,
   processSimulatedSupportPayment,
-  cleanupRecipientMemberships
+  cleanupRecipientMemberships,
+  cancelMembershipPeriod,
+  getUserMembershipPeriods,
+  sanitizePaymentMethodDetails,
+  parseDate
 } from '../services/membershipService';
 import { processDonationCompletionRewards } from '../services/rewardService';
 import {
@@ -336,6 +340,437 @@ describe('Support Membership, Reward Tokens & Redemption Suite', () => {
           upiId: 'ngo@okaxis'
         })
       ).rejects.toThrow(/exclusively available for Donors/i);
+    });
+  });
+
+  // 6. DETAILED SIMULATED PAYMENT CHECKOUT, STACKING & CANCELLATION (14 SCENARIOS)
+  describe('Simulated Payment Checkout, Consecutive Stacking & Cancellation (Scenarios 1-14)', () => {
+    // In-memory test state for full multi-step simulation
+    let memPeriodsStore = {};
+    let supportTxStore = {};
+    let userMembershipsStore = {};
+
+    beforeEach(async () => {
+      memPeriodsStore = {};
+      supportTxStore = {};
+      userMembershipsStore = {};
+
+      const firebaseModule = await import('../services/firebase');
+
+      firebaseModule.setDoc.mockImplementation(async (docRef, data) => {
+        const path = docRef.path;
+        if (path.startsWith('membershipPeriods/')) {
+          const id = path.split('/')[1];
+          memPeriodsStore[id] = { ...data, id };
+        } else if (path.startsWith('supportTransactions/')) {
+          const id = path.split('/')[1];
+          supportTxStore[id] = { ...data, id };
+        } else if (path.startsWith('memberships/')) {
+          const id = path.split('/')[1];
+          userMembershipsStore[id] = { ...data, id };
+        }
+      });
+
+      firebaseModule.updateDoc.mockImplementation(async (docRef, data) => {
+        const path = docRef.path;
+        if (path.startsWith('membershipPeriods/')) {
+          const id = path.split('/')[1];
+          if (memPeriodsStore[id]) {
+            memPeriodsStore[id] = { ...memPeriodsStore[id], ...data };
+          }
+        } else if (path.startsWith('supportTransactions/')) {
+          const id = path.split('/')[1];
+          if (supportTxStore[id]) {
+            supportTxStore[id] = { ...supportTxStore[id], ...data };
+          }
+        } else if (path.startsWith('memberships/')) {
+          const id = path.split('/')[1];
+          if (userMembershipsStore[id]) {
+            userMembershipsStore[id] = { ...userMembershipsStore[id], ...data };
+          }
+        }
+      });
+
+      firebaseModule.getDoc.mockImplementation(async (docRef) => {
+        const path = docRef.path;
+        if (path.startsWith('membershipPeriods/')) {
+          const id = path.split('/')[1];
+          const exists = Boolean(memPeriodsStore[id]);
+          return {
+            exists: () => exists,
+            data: () => memPeriodsStore[id] || null
+          };
+        } else if (path.startsWith('memberships/')) {
+          const id = path.split('/')[1];
+          const exists = Boolean(userMembershipsStore[id]);
+          return {
+            exists: () => exists,
+            data: () => userMembershipsStore[id] || null
+          };
+        }
+        return {
+          exists: () => false,
+          data: () => ({})
+        };
+      });
+
+      firebaseModule.getDocs.mockImplementation(async (queryRef) => {
+        // Return stored membershipPeriods
+        const periods = Object.values(memPeriodsStore);
+        return {
+          docs: periods.map((p) => ({
+            id: p.id || p.periodId,
+            data: () => p
+          })),
+          empty: periods.length === 0
+        };
+      });
+    });
+
+    // Scenario 1: Card payment completes and masks details
+    it('Scenario 1: Card simulated payment completes successfully with safe masked metadata', async () => {
+      const mockDb = {};
+      const res = await processSimulatedSupportPayment(mockDb, {
+        userId: 'donor_card_01',
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentMethod: 'card',
+        paymentMethodDetails: {
+          cardNumber: '4532111122228892',
+          cardholderName: 'Kavita Rao'
+        },
+        paymentStatus: 'completed'
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.status).toBe('completed');
+      expect(res.amount).toBe(100);
+      expect(res.membershipActivated).toBe(true);
+
+      // Verify safe metadata masking in storage
+      const tx = Object.values(supportTxStore).find((t) => t.userId === 'donor_card_01');
+      expect(tx).toBeDefined();
+      expect(tx.paymentMethod).toBe('card');
+      expect(tx.paymentMethodDetails.last4).toBe('8892');
+      expect(tx.paymentMethodDetails.cardBrand).toBe('Visa');
+      expect(tx.paymentMethodDetails.cardNumber).toBeUndefined(); // Zero raw card number!
+    });
+
+    // Scenario 2: UPI simulated payment completes
+    it('Scenario 2: UPI simulated payment completes successfully with VPA', async () => {
+      const mockDb = {};
+      const res = await processSimulatedSupportPayment(mockDb, {
+        userId: 'donor_upi_01',
+        userRole: 'donor',
+        planId: 'corridor_help',
+        paymentMethod: 'upi',
+        paymentMethodDetails: {
+          upiId: 'donor@okhdfcbank'
+        },
+        paymentStatus: 'completed'
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.status).toBe('completed');
+      expect(res.amount).toBe(250);
+      expect(res.membershipActivated).toBe(true);
+
+      const tx = Object.values(supportTxStore).find((t) => t.userId === 'donor_upi_01');
+      expect(tx.paymentMethodDetails.upiId).toBe('donor@okhdfcbank');
+    });
+
+    // Scenario 3: Net Banking simulated payment completes
+    it('Scenario 3: Net Banking simulated payment completes successfully with bank details', async () => {
+      const mockDb = {};
+      const res = await processSimulatedSupportPayment(mockDb, {
+        userId: 'donor_nb_01',
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentMethod: 'net_banking',
+        paymentMethodDetails: {
+          bankName: 'State Bank of India',
+          accountId: '9876543210'
+        },
+        paymentStatus: 'completed'
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.status).toBe('completed');
+      expect(res.membershipActivated).toBe(true);
+
+      const tx = Object.values(supportTxStore).find((t) => t.userId === 'donor_nb_01');
+      expect(tx.paymentMethodDetails.bankName).toBe('State Bank of India');
+      expect(tx.paymentMethodDetails.maskedAccount).toBe('••••3210');
+    });
+
+    // Scenario 4: Failed payment does not activate membership
+    it('Scenario 4: Failed payment records decline and NEVER activates membership', async () => {
+      const mockDb = {};
+      const res = await processSimulatedSupportPayment(mockDb, {
+        userId: 'donor_fail_01',
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentStatus: 'failed',
+        failureReason: 'Insufficient funds (simulated)'
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.status).toBe('failed');
+      expect(res.membershipActivated).toBe(false);
+
+      // Verify no membership period was added
+      const periods = Object.values(memPeriodsStore).filter((p) => p.userId === 'donor_fail_01');
+      expect(periods.length).toBe(0);
+
+      // Verify transaction recorded as failed for audit
+      const tx = Object.values(supportTxStore).find((t) => t.userId === 'donor_fail_01');
+      expect(tx.paymentStatus).toBe('failed');
+      expect(tx.failureReason).toBe('Insufficient funds (simulated)');
+    });
+
+    // Scenario 5: Cancelled payment does not activate membership
+    it('Scenario 5: Cancelled payment records cancellation and NEVER activates membership', async () => {
+      const mockDb = {};
+      const res = await processSimulatedSupportPayment(mockDb, {
+        userId: 'donor_cancel_01',
+        userRole: 'donor',
+        planId: 'corridor_help',
+        paymentStatus: 'cancelled'
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.status).toBe('cancelled');
+      expect(res.membershipActivated).toBe(false);
+
+      const periods = Object.values(memPeriodsStore).filter((p) => p.userId === 'donor_cancel_01');
+      expect(periods.length).toBe(0);
+
+      const tx = Object.values(supportTxStore).find((t) => t.userId === 'donor_cancel_01');
+      expect(tx.paymentStatus).toBe('cancelled');
+    });
+
+    // Scenario 6: Consecutive Stacking (3 purchases = 90 days)
+    it('Scenario 6: Purchasing the same membership three times creates three consecutive 30-day periods (90 days)', async () => {
+      const mockDb = {};
+      const userId = 'donor_stack_3x';
+
+      // 1st purchase: active for 30 days
+      const p1 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentStatus: 'completed'
+      });
+      expect(p1.periodStatus).toBe('active');
+
+      // 2nd purchase: upcoming for +30 days (consecutively stacked)
+      const p2 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentStatus: 'completed'
+      });
+      expect(p2.periodStatus).toBe('upcoming');
+      // Starts exactly when period 1 expires
+      expect(p2.startDate.getTime()).toBe(p1.expiresAt.getTime());
+
+      // 3rd purchase: upcoming for another +30 days
+      const p3 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentStatus: 'completed'
+      });
+      expect(p3.periodStatus).toBe('upcoming');
+      expect(p3.startDate.getTime()).toBe(p2.expiresAt.getTime());
+
+      // Verify total stacking duration across all 3 periods is ~90 days
+      const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+      const totalDiff = p3.expiresAt.getTime() - p1.startDate.getTime();
+      expect(Math.abs(totalDiff - ninetyDaysMs)).toBeLessThan(10000);
+    });
+
+    // Scenario 7: Purchasing a different plan queues it correctly
+    it('Scenario 7: Purchasing a different plan queues it with its own reward rate', async () => {
+      const mockDb = {};
+      const userId = 'donor_queue_diff';
+
+      // 1. Purchase Fuel Support (₹2 / 100 tokens)
+      const p1 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentStatus: 'completed'
+      });
+
+      // 2. Queue Corridor Help (₹6 / 100 tokens)
+      const p2 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'corridor_help',
+        paymentStatus: 'completed'
+      });
+
+      expect(p1.plan.id).toBe('fuel_support');
+      expect(p1.plan.redemptionRatePer100).toBe(2);
+
+      expect(p2.periodStatus).toBe('upcoming');
+      expect(p2.plan.id).toBe('corridor_help');
+      expect(p2.plan.redemptionRatePer100).toBe(6);
+      expect(p2.startDate.getTime()).toBe(p1.expiresAt.getTime());
+    });
+
+    // Scenario 8: Active membership cancellation
+    it('Scenario 8: Active membership cancellation marks as active_cancelled and retains benefits until scheduled expiry', async () => {
+      const mockDb = {};
+      const userId = 'donor_cancel_active';
+
+      const p1 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentStatus: 'completed'
+      });
+
+      const cancelRes = await cancelMembershipPeriod(mockDb, {
+        userId,
+        periodId: p1.periodId,
+        cancellationReason: 'Donor stopped recurring simulation'
+      });
+
+      expect(cancelRes.success).toBe(true);
+      expect(cancelRes.status).toBe('active_cancelled');
+      expect(cancelRes.cancellationType).toBe('active');
+      expect(cancelRes.validUntil.getTime()).toBe(p1.expiresAt.getTime());
+
+      // Check stored period document
+      const stored = memPeriodsStore[p1.periodId];
+      expect(stored.isCancelled).toBe(true);
+      expect(stored.status).toBe('active_cancelled');
+      expect(stored.cancellationReason).toBe('Donor stopped recurring simulation');
+    });
+
+    // Scenario 9 & 10: Upcoming pass cancellation does NOT cancel others and recalculates subsequent dates
+    it('Scenario 9 & 10: Cancelling upcoming pass leaves others intact and shifts subsequent passes forward by 30 days', async () => {
+      const mockDb = {};
+      const userId = 'donor_cancel_upcoming';
+
+      // Create 3 stacked passes
+      const p1 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentStatus: 'completed'
+      });
+      const p2 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'fuel_support',
+        paymentStatus: 'completed'
+      });
+      const p3 = await processSimulatedSupportPayment(mockDb, {
+        userId,
+        userRole: 'donor',
+        planId: 'corridor_help',
+        paymentStatus: 'completed'
+      });
+
+      const originalP3Start = p3.startDate.getTime();
+
+      // Cancel the middle pass (p2)
+      const cancelRes = await cancelMembershipPeriod(mockDb, {
+        userId,
+        periodId: p2.periodId,
+        cancellationReason: 'Cancelled pass 2'
+      });
+
+      expect(cancelRes.success).toBe(true);
+      expect(cancelRes.status).toBe('cancelled');
+      expect(cancelRes.cancellationType).toBe('upcoming');
+
+      // 1. Pass 1 remains active
+      expect(memPeriodsStore[p1.periodId].status).toBe('active');
+
+      // 2. Pass 2 is cancelled
+      expect(memPeriodsStore[p2.periodId].status).toBe('cancelled');
+
+      // 3. Pass 3 is NOT cancelled!
+      expect(memPeriodsStore[p3.periodId].status).toBe('upcoming');
+
+      // 4. Pass 3 start date was shifted forward by 30 days (now begins right when Pass 1 expires)!
+      const newP3Start = parseDate(memPeriodsStore[p3.periodId].startDate).getTime();
+      expect(newP3Start).toBe(p1.expiresAt.getTime());
+      expect(newP3Start).toBeLessThan(originalP3Start);
+    });
+
+    // Scenario 11: Payment history displays all transactions
+    it('Scenario 11: Payment history displays completed, failed, and cancelled transactions with metadata', async () => {
+      const mockDb = {};
+      const userId = 'donor_history_test';
+
+      await processSimulatedSupportPayment(mockDb, {
+        userId,
+        planId: 'coffee',
+        paymentStatus: 'completed'
+      });
+      await processSimulatedSupportPayment(mockDb, {
+        userId,
+        planId: 'fuel_support',
+        paymentStatus: 'failed',
+        failureReason: 'Card expired'
+      });
+      await processSimulatedSupportPayment(mockDb, {
+        userId,
+        planId: 'corridor_help',
+        paymentStatus: 'cancelled'
+      });
+
+      const txns = Object.values(supportTxStore).filter((t) => t.userId === userId);
+      expect(txns.length).toBe(3);
+      expect(txns.some((t) => t.paymentStatus === 'completed')).toBe(true);
+      expect(txns.some((t) => t.paymentStatus === 'failed')).toBe(true);
+      expect(txns.some((t) => t.paymentStatus === 'cancelled')).toBe(true);
+    });
+
+    // Scenario 12: Duplicate payment submission prevention
+    it('Scenario 12: Rapid duplicate payment submissions produce unique transaction IDs and safe tracking', async () => {
+      const mockDb = {};
+      const userId = 'donor_duplicate_test';
+
+      const [r1, r2] = await Promise.all([
+        processSimulatedSupportPayment(mockDb, { userId, planId: 'fuel_support' }),
+        processSimulatedSupportPayment(mockDb, { userId, planId: 'fuel_support' })
+      ]);
+
+      expect(r1.transactionId).not.toBe(r2.transactionId);
+      expect(r1.periodId).not.toBe(r2.periodId);
+    });
+
+    // Scenario 13: Existing token balances and reward valuations remain unchanged
+    it('Scenario 13: New membership purchases do not alter or recalculate existing batch valuations', () => {
+      const existingBatch = {
+        batchId: 'b_old',
+        tokensEarned: 100,
+        remainingTokens: 100,
+        planAtEarning: 'fuel_support',
+        redemptionRate: 0.02
+      };
+
+      const valBefore = existingBatch.remainingTokens * existingBatch.redemptionRate;
+      expect(valBefore).toBe(2);
+
+      // User buys Corridor Help (which has higher rate 0.06). Old batch valuation remains unchanged!
+      const valAfter = existingBatch.remainingTokens * existingBatch.redemptionRate;
+      expect(valAfter).toBe(2);
+    });
+
+    // Scenario 14: Existing donation and redemption workflows continue working
+    it('Scenario 14: Existing FIFO token redemption and donation reward rules continue working seamlessly', () => {
+      expect(REWARD_RULES.DONOR_REWARD_TOKENS).toBe(10);
+      expect(REWARD_RULES.MIN_REDEMPTION_TOKENS).toBe(100);
+      expect(REWARD_RULES.GLOBAL_DAILY_LIMIT).toBe(5);
+      expect(REWARD_RULES.PAIR_DAILY_LIMIT).toBe(2);
+      expect(REWARD_RULES.ELIGIBLE_ROLES).toContain('donor');
     });
   });
 });

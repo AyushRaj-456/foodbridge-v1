@@ -4,7 +4,11 @@ import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { db, collection, query, getDocs, limit, doc, getDoc } from '../../services/firebase';
 import { getISTDateString, SUPPORT_PLANS } from '../../config/membershipConfig';
-import { getSupportTransactions } from '../../services/membershipService';
+import {
+  getSupportTransactions,
+  getAllMembershipPeriods,
+  parseDate
+} from '../../services/membershipService';
 import {
   getRedemptionRequests,
   approveRedemptionRequest,
@@ -24,7 +28,9 @@ import {
   Search,
   Filter,
   Check,
-  ExternalLink
+  ExternalLink,
+  Layers,
+  Calendar
 } from 'lucide-react';
 
 export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships' }) {
@@ -39,10 +45,15 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
   // Data states
   const [transactions, setTransactions] = useState([]);
   const [memberships, setMemberships] = useState([]);
+  const [membershipPeriods, setMembershipPeriods] = useState([]);
   const [redemptions, setRedemptions] = useState([]);
   const [ledgerBatches, setLedgerBatches] = useState([]);
   const [globalCounter, setGlobalCounter] = useState(null);
   const [pairCounters, setPairCounters] = useState([]);
+
+  // Filter states
+  const [txFilter, setTxFilter] = useState('all'); // 'all' | 'completed' | 'failed' | 'cancelled'
+  const [periodFilter, setPeriodFilter] = useState('all'); // 'all' | 'active' | 'upcoming' | 'cancelled' | 'expired'
 
   // Reject Modal
   const [rejectModalReq, setRejectModalReq] = useState(null);
@@ -60,7 +71,12 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
       const donorTxns = txns.filter((t) => !t.userRole || t.userRole === 'donor');
       setTransactions(donorTxns);
 
-      // 2. Fetch memberships (Donors only)
+      // 2. Fetch all individual membership periods (active, upcoming, cancelled, expired)
+      const periods = await getAllMembershipPeriods(db, { limitCount: 150 });
+      const donorPeriods = periods.filter((p) => !p.userRole || p.userRole === 'donor');
+      setMembershipPeriods(donorPeriods);
+
+      // 3. Fetch summary memberships (Donors only)
       const memSnap = await getDocs(query(collection(db, 'memberships'), limit(100)));
       const donorMems = memSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
@@ -161,12 +177,33 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
   };
 
   // Aggregated calculations
-  const totalRevenue = transactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+  const totalRevenue = transactions
+    .filter((tx) => (tx.paymentStatus || 'completed') === 'completed')
+    .reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+
   const activeMembershipsCount = memberships.filter((m) => {
     const exp = m.expiresAt?.toDate ? m.expiresAt.toDate().getTime() : (m.expiresAt ? new Date(m.expiresAt).getTime() : 0);
     return exp > Date.now();
   }).length;
   const expiredMembershipsCount = memberships.length - activeMembershipsCount;
+  const queuedPeriodsCount = membershipPeriods.filter((p) => p.status === 'upcoming').length;
+
+  const filteredTxns = transactions.filter((tx) => {
+    if (txFilter === 'all') return true;
+    return (tx.paymentStatus || 'completed') === txFilter;
+  });
+
+  const filteredPeriods = membershipPeriods.filter((p) => {
+    if (periodFilter === 'all') return true;
+    const nowTime = Date.now();
+    const s = parseDate(p.startDate)?.getTime() || 0;
+    const e = parseDate(p.expiryDate)?.getTime() || 0;
+    if (periodFilter === 'active') return nowTime >= s && nowTime < e && p.status !== 'cancelled';
+    if (periodFilter === 'upcoming') return s > nowTime && p.status !== 'cancelled';
+    if (periodFilter === 'cancelled') return p.status === 'cancelled' || p.isCancelled;
+    if (periodFilter === 'expired') return e <= nowTime;
+    return true;
+  });
 
   const totalTokensAwarded = ledgerBatches.reduce((sum, b) => sum + (Number(b.tokensEarned) || 0), 0);
   const fuelTokens = ledgerBatches.filter((b) => b.planAtEarning === 'fuel_support').reduce((s, b) => s + (b.tokensEarned || 0), 0);
@@ -271,10 +308,10 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
 
             <Card className="p-4 text-center">
               <span className="block text-2xl font-extrabold text-stone-900 font-mono">
-                {expiredMembershipsCount}
+                {queuedPeriodsCount}
               </span>
-              <span className="block text-xs font-semibold text-stone-500 mt-0.5">
-                Expired Donor Memberships
+              <span className="block text-xs font-semibold text-blue-700 mt-0.5">
+                Queued Upcoming Passes
               </span>
             </Card>
 
@@ -292,61 +329,226 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                 {transactions.length}
               </span>
               <span className="block text-xs font-semibold text-stone-600 mt-0.5">
-                Donor Transactions Logged
+                All Transactions Logged
               </span>
             </Card>
           </div>
 
-          {/* Support Transactions Table */}
+          {/* Table 1: Support Transactions Audit Log */}
           <Card className="p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-border">
-              <h3 className="font-bold text-stone-900 text-sm">Donor Support Contributions Log</h3>
-              <Button variant="outline" size="sm" onClick={loadAllAdminData} disabled={loading}>
-                <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-border">
+              <div>
+                <h3 className="font-bold text-stone-900 text-sm">Donor Support Transactions Audit Trail</h3>
+                <p className="text-[11px] text-stone-500">Audits completed, failed, and cancelled simulated transactions</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-lg">
+                  {['all', 'completed', 'failed', 'cancelled'].map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setTxFilter(st)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium capitalize transition-colors ${
+                        txFilter === st
+                          ? 'bg-white text-stone-900 font-bold shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+
+                <Button variant="outline" size="sm" onClick={loadAllAdminData} disabled={loading}>
+                  <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
-              {transactions.length === 0 ? (
+              {filteredTxns.length === 0 ? (
                 <div className="py-8 text-center text-xs text-stone-500">
-                  No support transactions recorded yet.
+                  No {txFilter !== 'all' ? txFilter : ''} support transactions recorded.
                 </div>
               ) : (
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-surface-muted text-stone-600 font-semibold border-b border-border">
+                  <thead className="bg-surface-muted text-stone-600 font-semibold border-b border-border text-[11px]">
                     <tr>
                       <th className="py-2.5 px-3">Transaction ID</th>
-                      <th className="py-2.5 px-3">User</th>
+                      <th className="py-2.5 px-3">User / Donor</th>
                       <th className="py-2.5 px-3">Plan</th>
+                      <th className="py-2.5 px-3">Method</th>
                       <th className="py-2.5 px-3 text-right">Amount</th>
                       <th className="py-2.5 px-3">Date</th>
                       <th className="py-2.5 px-3">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {transactions.map((tx) => (
-                      <tr key={tx.id || tx.transactionId} className="hover:bg-surface-muted/50">
-                        <td className="py-2.5 px-3 font-mono font-semibold text-stone-800">{tx.transactionId || tx.id}</td>
-                        <td className="py-2.5 px-3 font-medium text-stone-900">
-                          {tx.userName || tx.userEmail || tx.userId}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <Badge variant="outline" size="sm">
-                            {tx.planName || tx.planId}
-                          </Badge>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-stone-900">₹{tx.amount}</td>
-                        <td className="py-2.5 px-3 text-stone-500 font-mono">
-                          {tx.timestampMs ? new Date(tx.timestampMs).toLocaleDateString('en-IN') : '—'}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <Badge variant="active" size="sm" className="text-[10px]">
-                            {tx.paymentStatus?.toUpperCase() || 'COMPLETED'}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredTxns.map((tx) => {
+                      const methodLabel = tx.paymentMethod === 'card'
+                        ? `Card (•••• ${tx.paymentMethodDetails?.last4 || '4242'})`
+                        : tx.paymentMethod === 'upi'
+                        ? `UPI (${tx.paymentMethodDetails?.upiId || 'vpa'})`
+                        : tx.paymentMethod === 'net_banking'
+                        ? `Net Banking (${tx.paymentMethodDetails?.bankName || 'Bank'})`
+                        : 'Simulated';
+                      const st = tx.paymentStatus || 'completed';
+
+                      return (
+                        <tr key={tx.id || tx.transactionId} className="hover:bg-surface-muted/50">
+                          <td className="py-2.5 px-3 font-mono font-semibold text-stone-800 whitespace-nowrap">
+                            {tx.transactionId || tx.id}
+                          </td>
+                          <td className="py-2.5 px-3 font-medium text-stone-900">
+                            {tx.userName || tx.userEmail || tx.userId}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <Badge variant="outline" size="sm" className="text-[10px]">
+                              {tx.planName || tx.planId}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-3 text-stone-600 font-mono text-[11px] whitespace-nowrap">
+                            {methodLabel}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-stone-900">
+                            ₹{tx.amount}
+                          </td>
+                          <td className="py-2.5 px-3 text-stone-500 font-mono whitespace-nowrap">
+                            {tx.timestampMs ? new Date(tx.timestampMs).toLocaleDateString('en-IN') : '—'}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <Badge
+                              variant={
+                                st === 'completed' ? 'active' : st === 'failed' ? 'danger' : 'neutral'
+                              }
+                              size="sm"
+                              className="text-[10px]"
+                            >
+                              {st.toUpperCase()}
+                            </Badge>
+                            {tx.failureReason && (
+                              <span className="block text-[10px] text-red-600 mt-0.5 max-w-[150px] truncate" title={tx.failureReason}>
+                                {tx.failureReason}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Card>
+
+          {/* Table 2: All Membership Periods Schedule */}
+          <Card className="p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-border">
+              <div>
+                <h3 className="font-bold text-stone-900 text-sm">All Membership Periods Schedule</h3>
+                <p className="text-[11px] text-stone-500">Consecutive stacking and scheduled passes for all donors</p>
+              </div>
+
+              <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-lg">
+                {['all', 'active', 'upcoming', 'cancelled', 'expired'].map((pf) => (
+                  <button
+                    key={pf}
+                    type="button"
+                    onClick={() => setPeriodFilter(pf)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium capitalize transition-colors ${
+                      periodFilter === pf
+                        ? 'bg-white text-stone-900 font-bold shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    {pf}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              {filteredPeriods.length === 0 ? (
+                <div className="py-8 text-center text-xs text-stone-500">
+                  No {periodFilter !== 'all' ? periodFilter : ''} membership periods found.
+                </div>
+              ) : (
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-surface-muted text-stone-600 font-semibold border-b border-border text-[11px]">
+                    <tr>
+                      <th className="py-2.5 px-3">Period ID</th>
+                      <th className="py-2.5 px-3">Donor ID</th>
+                      <th className="py-2.5 px-3">Plan</th>
+                      <th className="py-2.5 px-3">Start Date</th>
+                      <th className="py-2.5 px-3">Expiry Date</th>
+                      <th className="py-2.5 px-3 text-right">Amount</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">Linked Txn</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filteredPeriods.map((p) => {
+                      const sDate = parseDate(p.startDate);
+                      const eDate = parseDate(p.expiryDate);
+                      const nowTime = Date.now();
+                      const isNowActive = nowTime >= (sDate?.getTime() || 0) && nowTime < (eDate?.getTime() || 0) && p.status !== 'cancelled';
+                      const isNowUpcoming = (sDate?.getTime() || 0) > nowTime && p.status !== 'cancelled';
+
+                      return (
+                        <tr key={p.id || p.periodId} className="hover:bg-surface-muted/50">
+                          <td className="py-2.5 px-3 font-mono font-semibold text-stone-800 whitespace-nowrap">
+                            {p.periodId || p.id}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-stone-600 max-w-[120px] truncate">
+                            {p.userId}
+                          </td>
+                          <td className="py-2.5 px-3 font-medium text-stone-900 whitespace-nowrap">
+                            {p.planName}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-stone-600 whitespace-nowrap">
+                            {sDate ? sDate.toLocaleDateString('en-IN') : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-stone-600 whitespace-nowrap">
+                            {eDate ? eDate.toLocaleDateString('en-IN') : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-stone-900">
+                            ₹{p.amount}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <Badge
+                              variant={
+                                p.status === 'cancelled'
+                                  ? 'danger'
+                                  : p.isCancelled
+                                  ? 'warning'
+                                  : isNowActive
+                                  ? 'active'
+                                  : isNowUpcoming
+                                  ? 'neutral'
+                                  : 'neutral'
+                              }
+                              size="sm"
+                              className="text-[10px]"
+                            >
+                              {p.status === 'cancelled'
+                                ? 'CANCELLED'
+                                : p.isCancelled
+                                ? 'NON-RENEWING'
+                                : isNowActive
+                                ? 'ACTIVE'
+                                : isNowUpcoming
+                                ? 'UPCOMING'
+                                : 'EXPIRED'}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-[11px] text-stone-500 whitespace-nowrap">
+                            {p.transactionId ? p.transactionId.slice(-8) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
