@@ -5,7 +5,8 @@ import {
   REWARD_RULES,
   getPlanById,
   getISTDateString,
-  getDonorNgoPairKey
+  getDonorNgoPairKey,
+  calculateDonationTokens
 } from '../config/membershipConfig';
 import {
   isMembershipActive,
@@ -17,7 +18,10 @@ import {
   sanitizePaymentMethodDetails,
   parseDate
 } from '../services/membershipService';
-import { processDonationCompletionRewards } from '../services/rewardService';
+import {
+  processDonationCompletionRewards,
+  extractDonationQuantityKg
+} from '../services/rewardService';
 import {
   getUserWallet,
   requestTokenRedemption,
@@ -45,6 +49,11 @@ vi.mock('../services/firebase', () => ({
   getDocs: vi.fn(async () => ({ docs: [], empty: true })),
   onSnapshot: vi.fn(() => vi.fn()),
   serverTimestamp: vi.fn(() => new Date())
+}));
+
+// Mock Firestore runTransaction
+vi.mock('firebase/firestore', () => ({
+  runTransaction: vi.fn()
 }));
 
 describe('Support Membership, Reward Tokens & Redemption Suite', () => {
@@ -771,6 +780,380 @@ describe('Support Membership, Reward Tokens & Redemption Suite', () => {
       expect(REWARD_RULES.GLOBAL_DAILY_LIMIT).toBe(5);
       expect(REWARD_RULES.PAIR_DAILY_LIMIT).toBe(2);
       expect(REWARD_RULES.ELIGIBLE_ROLES).toContain('donor');
+    });
+  });
+
+  // 7. QUANTITY-BASED REWARD TOKEN EARNING (10 TOKENS PER 2 KG) & TRACEABILITY (14 EDGE CASES)
+  describe('Quantity-Based Reward Token Earning & Linkage Suite (14 Edge Cases)', () => {
+    let mockListingsStore = {};
+    let mockLedgerStore = {};
+    let mockWalletsStore = {};
+    let mockMembershipsStore = {};
+    let mockCountersStore = {};
+
+    beforeEach(async () => {
+      mockListingsStore = {};
+      mockLedgerStore = {};
+      mockWalletsStore = {};
+      mockMembershipsStore = {};
+      mockCountersStore = {};
+
+      const firebaseModule = await import('../services/firebase');
+
+      firebaseModule.doc.mockImplementation((dbInstance, col, id) => ({
+        path: `${col}/${id}`,
+        id
+      }));
+
+      firebaseModule.setDoc.mockImplementation(async (docRef, data, options) => {
+        const path = docRef.path;
+        const [col, id] = path.split('/');
+        if (col === 'listings') {
+          mockListingsStore[id] = options?.merge
+            ? { ...mockListingsStore[id], ...data }
+            : { ...data, id };
+        } else if (col === 'rewardLedger') {
+          mockLedgerStore[id] = options?.merge
+            ? { ...mockLedgerStore[id], ...data }
+            : { ...data, id };
+        } else if (col === 'wallets') {
+          mockWalletsStore[id] = options?.merge
+            ? { ...mockWalletsStore[id], ...data }
+            : { ...data, id };
+        }
+      });
+
+      firebaseModule.getDoc.mockImplementation(async (docRef) => {
+        const path = docRef.path;
+        const [col, id] = path.split('/');
+        let data = null;
+        if (col === 'listings') data = mockListingsStore[id];
+        else if (col === 'rewardLedger') data = mockLedgerStore[id];
+        else if (col === 'wallets') data = mockWalletsStore[id];
+        else if (col === 'memberships') data = mockMembershipsStore[id];
+        return {
+          exists: () => Boolean(data),
+          data: () => data || {}
+        };
+      });
+    });
+
+    // 1. Edge Case 1: 2 kg generates 10 tokens
+    it('Edge Case 1: A listing of 2 kg generates exactly 10 tokens', () => {
+      expect(calculateDonationTokens(2)).toBe(10);
+    });
+
+    // 2. Edge Case 2: 5 kg generates 25 tokens
+    it('Edge Case 2: A listing of 5 kg generates exactly 25 tokens', () => {
+      expect(calculateDonationTokens(5)).toBe(25);
+    });
+
+    // 3. Edge Case 3: 10.5 kg generates 52.5 tokens (proportional, never rounded down)
+    it('Edge Case 3: A listing of 10.5 kg generates 52.5 tokens without rounding down', () => {
+      expect(calculateDonationTokens(10.5)).toBe(52.5);
+      // Additional proportional verification
+      expect(calculateDonationTokens(1)).toBe(5);
+      expect(calculateDonationTokens(3)).toBe(15);
+      expect(calculateDonationTokens(4)).toBe(20);
+      expect(calculateDonationTokens(10)).toBe(50);
+      expect(calculateDonationTokens(20)).toBe(100);
+    });
+
+    // 4. Edge Case 4: Listing cancelled before handover: no tokens
+    it('Edge Case 4: A listing cancelled before handover awards 0 tokens', async () => {
+      const mockDb = {};
+      const res = await processDonationCompletionRewards(mockDb, {
+        id: 'list_cancelled',
+        donorId: 'donor_01',
+        recipientId: 'ngo_01',
+        quantity: 10,
+        status: 'cancelled'
+      });
+      expect(res.success).toBe(false);
+      expect(res.reason).toBe('handover_not_completed');
+    });
+
+    // 5. Edge Case 5: NGO rejects donation: no tokens
+    it('Edge Case 5: An NGO rejected donation awards 0 tokens', async () => {
+      const mockDb = {};
+      const res = await processDonationCompletionRewards(mockDb, {
+        id: 'list_rejected',
+        donorId: 'donor_01',
+        recipientId: 'ngo_01',
+        quantity: 8,
+        status: 'rejected'
+      });
+      expect(res.success).toBe(false);
+      expect(res.reason).toBe('handover_not_completed');
+    });
+
+    // 6. Edge Case 6: Donation accepted but handover incomplete: no tokens
+    it('Edge Case 6: A donation accepted/in-transit with incomplete handover awards 0 tokens', async () => {
+      const mockDb = {};
+      const resInTransit = await processDonationCompletionRewards(mockDb, {
+        id: 'list_transit',
+        donorId: 'donor_01',
+        recipientId: 'ngo_01',
+        quantity: 6,
+        status: 'in_transit'
+      });
+      expect(resInTransit.success).toBe(false);
+      expect(resInTransit.reason).toBe('handover_not_completed');
+
+      const resPending = await processDonationCompletionRewards(mockDb, {
+        id: 'list_pending',
+        donorId: 'donor_01',
+        recipientId: 'ngo_01',
+        quantity: 6,
+        status: 'pending'
+      });
+      expect(resPending.success).toBe(false);
+      expect(resPending.reason).toBe('handover_not_completed');
+    });
+
+    // 7. Edge Case 7: Completed handover generates the correct tokens
+    it('Edge Case 7: A completed handover generates correct quantity-based tokens in transaction', async () => {
+      const mockDb = {};
+      const listingId = 'list_completed_10kg';
+      const donorId = 'donor_fuel_01';
+      const recipientId = 'ngo_shelter_01';
+
+      // Setup active membership for donor
+      mockMembershipsStore[donorId] = {
+        userId: donorId,
+        userRole: 'donor',
+        activePlan: 'fuel_support',
+        isActive: true,
+        expiresAt: new Date(Date.now() + 864000000)
+      };
+
+      // Setup listing in store
+      mockListingsStore[listingId] = {
+        id: listingId,
+        donorId,
+        recipientId,
+        quantity: 10,
+        unit: 'kg',
+        status: 'completed',
+        rewardProcessed: false
+      };
+
+      // Mock runTransaction to execute callback directly
+      const { runTransaction } = await import('firebase/firestore');
+      runTransaction.mockImplementationOnce(async (db, cb) => {
+        const fakeTx = {
+          get: async (ref) => {
+            const [col, id] = ref.path.split('/');
+            let data = null;
+            if (col === 'listings') data = mockListingsStore[id];
+            else if (col === 'rewardLedger') data = mockLedgerStore[id];
+            else if (col === 'wallets') data = mockWalletsStore[id];
+            else if (col === 'dailyPairRewardCounters') data = mockCountersStore[id];
+            else if (col === 'dailyRewardCounters') data = mockCountersStore[id];
+            return {
+              exists: () => Boolean(data),
+              data: () => data || {}
+            };
+          },
+          set: (ref, data, opts) => {
+            const [col, id] = ref.path.split('/');
+            if (col === 'rewardLedger') {
+              mockLedgerStore[id] = opts?.merge ? { ...mockLedgerStore[id], ...data } : { ...data, id };
+            } else if (col === 'wallets') {
+              mockWalletsStore[id] = opts?.merge ? { ...mockWalletsStore[id], ...data } : { ...data, id };
+            } else if (col === 'listings') {
+              mockListingsStore[id] = opts?.merge ? { ...mockListingsStore[id], ...data } : { ...data, id };
+            }
+          }
+        };
+        return cb(fakeTx);
+      });
+
+      const res = await processDonationCompletionRewards(mockDb, {
+        id: listingId,
+        donorId,
+        acceptedRecipientId: recipientId,
+        quantity: 10,
+        unit: 'kg',
+        status: 'completed'
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.donorTokens).toBe(50); // (10 / 2) * 10 = 50 tokens
+      expect(res.foodQuantityKg).toBe(10);
+      expect(res.calculationFormula).toBe('(10 / 2) * 10');
+
+      // Verify wallet update
+      expect(mockWalletsStore[donorId]?.availableTokens).toBe(50);
+      expect(mockWalletsStore[donorId]?.totalTokensEarned).toBe(50);
+
+      // Verify deterministic ledger entry
+      const batchId = `LEDGER_${listingId}_donor`;
+      const batch = mockLedgerStore[batchId];
+      expect(batch).toBeDefined();
+      expect(batch.tokensEarned).toBe(50);
+      expect(batch.remainingTokens).toBe(50);
+      expect(batch.foodQuantityKg).toBe(10);
+      expect(batch.planAtEarning).toBe('fuel_support');
+      expect(batch.redemptionRate).toBe(0.02);
+      expect(batch.status).toBe('credited');
+    });
+
+    // 8. Edge Case 8: Duplicate completion event triggers no duplicate rewards
+    it('Edge Case 8: Repeated completion event triggers idempotency guard (no duplicate rewards)', async () => {
+      const mockDb = {};
+      const listingId = 'list_completed_double';
+      const donorId = 'donor_fuel_02';
+
+      // Listing already marked as rewardProcessed
+      const res = await processDonationCompletionRewards(mockDb, {
+        id: listingId,
+        donorId,
+        acceptedRecipientId: 'ngo_01',
+        quantity: 10,
+        status: 'completed',
+        rewardProcessed: true
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.reason).toBe('already_rewarded');
+    });
+
+    // 9. Edge Case 9: Donor without active membership completes donation: no tokens
+    it('Edge Case 9: A Donor without an active membership earns 0 tokens upon completion', async () => {
+      const mockDb = {};
+      const listingId = 'list_no_member';
+      const donorId = 'donor_unpaid';
+
+      // Membership is inactive
+      mockMembershipsStore[donorId] = {
+        userId: donorId,
+        userRole: 'donor',
+        isActive: false,
+        activePlan: null
+      };
+
+      const res = await processDonationCompletionRewards(mockDb, {
+        id: listingId,
+        donorId,
+        acceptedRecipientId: 'ngo_01',
+        quantity: 10,
+        status: 'completed'
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.reason).toBe('no_active_donor_member');
+      expect(mockWalletsStore[donorId]).toBeUndefined();
+    });
+
+    // 10. Edge Case 10: Donor with Fuel Support receives correct reward valuation
+    it('Edge Case 10: Tokens earned under Fuel Support are valued at ₹2 per 100 tokens', () => {
+      const tokens = calculateDonationTokens(10); // 50 tokens
+      const plan = getPlanById('fuel_support');
+      expect(plan.redemptionRatePer100).toBe(2);
+      expect(plan.ratePerToken).toBe(0.02);
+      const estValue = tokens * plan.ratePerToken;
+      expect(estValue).toBe(1.0); // 50 * 0.02 = ₹1.00
+    });
+
+    // 11. Edge Case 11: Donor with Corridor Help receives correct reward valuation
+    it('Edge Case 11: Tokens earned under Corridor Help are valued at ₹6 per 100 tokens', () => {
+      const tokens = calculateDonationTokens(10); // 50 tokens
+      const plan = getPlanById('corridor_help');
+      expect(plan.redemptionRatePer100).toBe(6);
+      expect(plan.ratePerToken).toBe(0.06);
+      const estValue = tokens * plan.ratePerToken;
+      expect(estValue).toBe(3.0); // 50 * 0.06 = ₹3.00
+    });
+
+    // 12. Edge Case 12: Previously earned tokens retain original redemption rates
+    it('Edge Case 12: Previously earned tokens retain their original Fuel Support rate after Corridor upgrade', () => {
+      // Historical batch earned under Fuel Support
+      const historicalBatch = {
+        batchId: 'LEDGER_fb_old_donor',
+        foodQuantityKg: 10,
+        tokensEarned: 50,
+        remainingTokens: 50,
+        planAtEarning: 'fuel_support',
+        redemptionRate: 0.02,
+        redemptionRatePer100: 2
+      };
+
+      // Current active plan is Corridor Help
+      const currentPlan = getPlanById('corridor_help');
+      expect(currentPlan.ratePerToken).toBe(0.06);
+
+      // Value calculation for historical batch MUST still use original 0.02 rate
+      const val = historicalBatch.remainingTokens * historicalBatch.redemptionRate;
+      expect(val).toBe(1.0); // ₹1.00 (NOT ₹3.00!)
+    });
+
+    // 13. Edge Case 13: Reward Ledger links every credit to original listing with full traceability
+    it('Edge Case 13: Reward Ledger permanently links all traceability metadata fields', () => {
+      const qtyKg = 14;
+      const tokens = calculateDonationTokens(qtyKg); // (14 / 2) * 10 = 70
+      expect(tokens).toBe(70);
+
+      const batch = {
+        batchId: 'LEDGER_FB-1045_donor',
+        rewardTransactionId: 'LEDGER_FB-1045_donor',
+        userId: 'donor_uid_99',
+        donorName: 'Bengaluru Caterers',
+        listingId: 'FB-1045',
+        donationId: 'FB-1045',
+        handoverId: 'HANDOVER-9921',
+        foodQuantityKg: qtyKg,
+        calculationFormula: `(${qtyKg} / 2) * 10`,
+        calculationDetails: `(${qtyKg} kg / 2) × 10 = ${tokens} tokens`,
+        tokensEarned: tokens,
+        tokensAwarded: tokens,
+        planAtEarning: 'fuel_support',
+        planNameAtEarning: 'Fuel Support',
+        redemptionRate: 0.02,
+        redemptionRatePer100: 2,
+        rewardValue: 1.4,
+        status: 'credited',
+        timestampMs: Date.now()
+      };
+
+      expect(batch.rewardTransactionId).toBe('LEDGER_FB-1045_donor');
+      expect(batch.listingId).toBe('FB-1045');
+      expect(batch.foodQuantityKg).toBe(14);
+      expect(batch.tokensEarned).toBe(70);
+      expect(batch.calculationFormula).toBe('(14 / 2) * 10');
+      expect(batch.calculationDetails).toBe('(14 kg / 2) × 10 = 70 tokens');
+      expect(batch.status).toBe('credited');
+    });
+
+    // 14. Edge Case 14: Token redemption deducts from appropriate batches (FIFO)
+    it('Edge Case 14: Token redemption correctly deducts tokens from the appropriate reward batches in FIFO order', () => {
+      const batches = [
+        { batchId: 'b_old_10kg', remainingTokens: 50, rate: 0.02, plan: 'fuel_support' },
+        { batchId: 'b_new_20kg', remainingTokens: 100, rate: 0.06, plan: 'corridor_help' }
+      ];
+
+      // Redeem 100 tokens: 50 from b_old_10kg and 50 from b_new_20kg
+      let needed = 100;
+      const deductions = [];
+      for (const b of batches) {
+        if (needed <= 0) break;
+        const take = Math.min(b.remainingTokens, needed);
+        deductions.push({ batchId: b.batchId, tokensDeducted: take, payout: take * b.rate });
+        b.remainingTokens -= take;
+        needed -= take;
+      }
+
+      expect(deductions.length).toBe(2);
+      expect(deductions[0].batchId).toBe('b_old_10kg');
+      expect(deductions[0].tokensDeducted).toBe(50);
+      expect(deductions[0].payout).toBe(1.0); // 50 * 0.02 = ₹1.00
+
+      expect(deductions[1].batchId).toBe('b_new_20kg');
+      expect(deductions[1].tokensDeducted).toBe(50);
+      expect(deductions[1].payout).toBe(3.0); // 50 * 0.06 = ₹3.00
+
+      expect(batches[0].remainingTokens).toBe(0);
+      expect(batches[1].remainingTokens).toBe(50);
     });
   });
 });

@@ -28,7 +28,7 @@ export const SUPPORT_PLANS = {
     redemptionRatePer100: 2, // ₹2 per 100 tokens
     ratePerToken: 0.02,
     badge: '30-Day Membership',
-    description: 'Activates a 30-day membership for Donors. Eligible Donors earn tokens on completed donations. Redeem at ₹2 per 100 tokens.'
+    description: 'Activates a 30-day membership for Donors. Eligible Donors earn 10 tokens for every 2 kg of food donated. Redeem at ₹2 per 100 tokens.'
   },
   CORRIDOR_HELP: {
     id: 'corridor_help',
@@ -40,18 +40,39 @@ export const SUPPORT_PLANS = {
     redemptionRatePer100: 6, // ₹6 per 100 tokens
     ratePerToken: 0.06,
     badge: '30-Day Membership',
-    description: 'Activates a 30-day membership for Donors. Eligible Donors earn tokens on completed donations. Redeem at ₹6 per 100 tokens.'
+    description: 'Activates a 30-day membership for Donors. Eligible Donors earn 10 tokens for every 2 kg of food donated. Redeem at ₹6 per 100 tokens.'
   }
 };
 
 export const REWARD_RULES = {
-  DONOR_REWARD_TOKENS: 10,
+  TOKENS_PER_TWO_KG: 10,
+  KG_PER_REWARD_BLOCK: 2,
+  DONOR_REWARD_TOKENS: 10, // Legacy fallback
   RECIPIENT_REWARD_TOKENS: 0, // Recipients are 100% free and do not earn tokens
   GLOBAL_DAILY_LIMIT: 5, // Max 5 reward-eligible donations platform-wide per IST calendar day
   PAIR_DAILY_LIMIT: 2,   // Max 2 reward-eligible donations per Donor-NGO pair per IST calendar day
   MIN_REDEMPTION_TOKENS: 100, // Minimum 100 tokens, must be multiple of 100
   ELIGIBLE_ROLES: ['donor'] // Exclusively Donors; couriers and recipients excluded
 };
+
+/**
+ * Calculates token reward for a given food quantity in kilograms.
+ * Formula: Tokens Earned = (Food Quantity in KG / 2) * 10
+ *
+ * Proportional calculation with support for fractional quantities.
+ * Does not round down the quantity or award tokens based only on completed 2 kg blocks.
+ *
+ * @param {number} foodQuantityKg
+ * @returns {number}
+ */
+export function calculateDonationTokens(foodQuantityKg) {
+  const qty = Number(foodQuantityKg);
+  if (isNaN(qty) || qty <= 0) return 0;
+  // Formula: (Food Quantity in KG / 2) * 10 = Food Quantity in KG * 5
+  const tokens = (qty / 2) * 10;
+  // Round to 2 decimal places for fractional precision
+  return Math.round(tokens * 100) / 100;
+}
 
 /**
  * Returns the plan definition by plan ID.

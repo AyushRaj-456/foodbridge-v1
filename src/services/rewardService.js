@@ -15,24 +15,68 @@ import {
   REWARD_RULES,
   getPlanById,
   getISTDateString,
-  getDonorNgoPairKey
+  getDonorNgoPairKey,
+  calculateDonationTokens
 } from '../config/membershipConfig';
 import { getUserMembership } from './membershipService';
+
+/**
+ * Extracts and normalizes food quantity in kilograms from donation data.
+ * Supports explicit kg, grams, meal portions (0.4 kg/meal), or actual handover weight.
+ *
+ * @param {Object} donation
+ * @returns {number} Quantity in kilograms
+ */
+export function extractDonationQuantityKg(donation) {
+  if (!donation) return 0;
+  // If actual verified handover weight was recorded (e.g. partial or weighed handover)
+  if (typeof donation.actualHandoverKg === 'number' && donation.actualHandoverKg > 0) {
+    return donation.actualHandoverKg;
+  }
+  if (typeof donation.foodQuantityKg === 'number' && donation.foodQuantityKg > 0) {
+    return donation.foodQuantityKg;
+  }
+  if (typeof donation.weightKg === 'number' && donation.weightKg > 0) {
+    return donation.weightKg;
+  }
+  if (typeof donation.quantityKg === 'number' && donation.quantityKg > 0) {
+    return donation.quantityKg;
+  }
+
+  const rawQty = Number(donation.quantity ?? donation.foodQuantity ?? 0);
+  if (isNaN(rawQty) || rawQty <= 0) return 0;
+
+  const unit = (donation.unit || 'kg').toLowerCase().trim();
+  if (unit === 'kg') return rawQty;
+  if (unit === 'g' || unit === 'grams') return Math.round((rawQty / 1000) * 100) / 100;
+  if (unit === 'meals' || unit === 'servings' || unit === 'portions') {
+    // FSSAI / FAO baseline: 1 standard meal portion = 0.4 kg
+    return Math.round(rawQty * 0.4 * 100) / 100;
+  }
+  if (unit === 'liters' || unit === 'l') {
+    // 1 liter liquid food ~= 1 kg
+    return rawQty;
+  }
+  // Default fallback to numeric quantity as kg
+  return rawQty;
+}
 
 /**
  * Evaluates and awards tokens for a successfully completed donation.
  *
  * Rules:
- * - Only triggered when donation status is 'completed'.
+ * - Only triggered when donation handover reaches final COMPLETED state.
+ * - Never credited when created, published, accepted, matched, in-transit, or cancelled.
+ * - Quantity-based reward formula: Tokens Earned = (Food Quantity in KG / 2) * 10.
  * - Must have valid donorId and acceptedRecipientId.
- * - Idempotency: verified via listing.rewardProcessed flag and atomic transaction.
- * - Eligible roles: Donor (10 tokens) and NGO/Recipient (5 tokens).
- * - Couriers/delivery partners are completely excluded.
- * - Participant must have an ACTIVE membership at completion time.
+ * - Idempotency: verified via listing.rewardProcessed flag and deterministic ledger doc ID.
+ * - Eligible roles: Exclusively Donors with an ACTIVE membership.
+ * - Couriers and NGOs/Recipients receive 0 tokens.
  * - Global daily limit: first 5 reward-eligible donations per IST calendar day.
  * - Pair daily limit: max 2 reward-eligible donations per Donor-NGO pair per IST calendar day.
  * - Pair limit reached DOES NOT consume a global slot.
  * - Permanent plan-based valuation: tokens permanently record planAtEarning and redemptionRate.
+ * - Permanent traceability: links donor, listing, quantity, calculation formula, and timestamp.
  *
  * @param {Object} [dbInstance=db]
  * @param {Object} donation Listing document data
@@ -41,6 +85,11 @@ import { getUserMembership } from './membershipService';
 export async function processDonationCompletionRewards(dbInstance = db, donation) {
   if (!donation || !donation.id) {
     return { success: false, reason: 'invalid_donation' };
+  }
+
+  // Guard: tokens must NOT be credited unless handover is COMPLETED
+  if (donation.status && donation.status !== 'completed') {
+    return { success: false, reason: 'handover_not_completed', status: donation.status };
   }
 
   const database = dbInstance || db;
@@ -83,13 +132,51 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
   const pairCounterRef = doc(database, 'dailyPairRewardCounters', pairKey);
   const listingRef = doc(database, 'listings', donationId);
 
-  // 3. Execute atomic transaction to prevent race conditions on daily limits
+  // Deterministic batch ID enforces idempotency at the database storage layer
+  const donorBatchId = `LEDGER_${donationId}_donor`;
+  const donorLedgerRef = doc(database, 'rewardLedger', donorBatchId);
+
+  // 3. Execute atomic transaction to prevent race conditions and duplicate rewards
   try {
     const result = await runTransaction(database, async (transaction) => {
-      // Re-read listing inside transaction for strict idempotency
+      // Re-read listing inside transaction for strict status & idempotency
       const listSnap = await transaction.get(listingRef);
-      if (listSnap.exists() && listSnap.data().rewardProcessed) {
+      if (!listSnap.exists()) {
+        return { success: false, reason: 'listing_not_found' };
+      }
+
+      const listData = listSnap.data();
+
+      // Ensure donation is strictly completed in database
+      if (listData.status !== 'completed' && donation.status !== 'completed') {
+        return { success: false, reason: 'handover_not_completed', currentStatus: listData.status };
+      }
+
+      // Check listing rewardProcessed flag
+      if (listData.rewardProcessed) {
         return { success: false, reason: 'already_rewarded' };
+      }
+
+      // Check deterministic ledger document for absolute duplicate prevention
+      const existingLedgerSnap = await transaction.get(donorLedgerRef);
+      if (existingLedgerSnap.exists()) {
+        return { success: false, reason: 'already_rewarded', batchId: donorBatchId };
+      }
+
+      // Read food quantity and compute tokens
+      const foodQuantityKg = extractDonationQuantityKg(listData.quantity != null ? listData : donation);
+      const donorTokensAwarded = calculateDonationTokens(foodQuantityKg);
+
+      if (donorTokensAwarded <= 0) {
+        transaction.set(listingRef, {
+          rewardProcessed: true,
+          rewardEligibility: {
+            status: 'zero_quantity_no_tokens',
+            foodQuantityKg,
+            checkedAt: serverTimestamp()
+          }
+        }, { merge: true });
+        return { success: false, reason: 'zero_quantity_no_tokens', foodQuantityKg };
       }
 
       // Read pair limit counter first
@@ -98,7 +185,6 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
 
       // Pair Limit Check: Max 2 donations per pair per IST day
       if (currentPairCount >= REWARD_RULES.PAIR_DAILY_LIMIT) {
-        // Mark listing as processed without consuming global slot
         transaction.set(listingRef, {
           rewardProcessed: true,
           rewardEligibility: {
@@ -150,21 +236,30 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
 
       const now = new Date();
       const timestampMs = now.getTime();
-      const donorTokensAwarded = REWARD_RULES.DONOR_REWARD_TOKENS; // 10 tokens exclusively for Donor
 
-      // Award Donor Tokens (10 tokens)
+      // Award Donor Tokens based on quantity: (kg / 2) * 10
       const donorRate = donorMem.planDetails.ratePerToken;
       const donorRatePer100 = donorMem.planDetails.redemptionRatePer100;
-      const donorBatchId = `LEDGER_${timestampMs}_donor_${donationId}`;
-      const donorLedgerRef = doc(database, 'rewardLedger', donorBatchId);
+      const donorName = donation.donorName || listData.donorName || donation.contactPerson || listData.contactPerson || 'Donor';
+      const calculationFormula = `(${foodQuantityKg} / 2) * 10`;
+      const calculationDetails = `(${foodQuantityKg} kg / 2) × 10 = ${donorTokensAwarded} tokens`;
 
+      // Complete traceability linkage in rewardLedger
       transaction.set(donorLedgerRef, {
         batchId: donorBatchId,
+        rewardTransactionId: donorBatchId,
         userId: donorId,
+        donorName,
         role: 'donor',
+        listingId: donationId,
         donationId,
-        donationTitle: donation.title || 'Food Donation',
+        handoverId: donation.handoverId || listData.handoverId || donationId,
+        donationTitle: donation.title || listData.title || 'Food Donation',
+        foodQuantityKg,
+        calculationFormula,
+        calculationDetails,
         tokensEarned: donorTokensAwarded,
+        tokensAwarded: donorTokensAwarded,
         planAtEarning: donorMem.activePlan,
         planNameAtEarning: donorMem.planDetails.name,
         redemptionRate: donorRate,
@@ -173,6 +268,7 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
         redeemedTokens: 0,
         reservedTokens: 0,
         remainingTokens: donorTokensAwarded,
+        status: 'credited',
         timestampMs,
         createdAt: serverTimestamp()
       });
@@ -192,7 +288,7 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
         updatedAt: serverTimestamp()
       }, { merge: true });
 
-      // Mark listing as rewarded (Donor only rewarded)
+      // Mark listing as rewarded with full traceability data
       transaction.set(listingRef, {
         rewardProcessed: true,
         rewardEligibility: {
@@ -200,10 +296,14 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
           dateIST,
           donorAwarded: true,
           donorTokens: donorTokensAwarded,
+          foodQuantityKg,
+          calculationFormula,
+          calculationDetails,
           recipientAwarded: false,
           recipientTokens: 0,
           globalCount: newGlobalCount,
           pairCount: newPairCount,
+          batchId: donorBatchId,
           awardedAt: serverTimestamp()
         }
       }, { merge: true });
@@ -213,6 +313,9 @@ export async function processDonationCompletionRewards(dbInstance = db, donation
         dateIST,
         donorAwarded: true,
         donorTokens: donorTokensAwarded,
+        foodQuantityKg,
+        calculationFormula,
+        batchId: donorBatchId,
         recipientAwarded: false,
         recipientTokens: 0,
         globalCount: newGlobalCount,

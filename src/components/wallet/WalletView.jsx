@@ -42,7 +42,7 @@ import {
   FlaskConical
 } from 'lucide-react';
 
-export function WalletView({ role = 'donor' }) {
+export function WalletView({ role = 'donor', onNavigateToHistory }) {
   const { user, userDoc, isAdmin } = useAuth();
 
   const [wallet, setWallet] = useState(null);
@@ -50,6 +50,7 @@ export function WalletView({ role = 'donor' }) {
   const [supportTxns, setSupportTxns] = useState([]);
   const [membershipPeriods, setMembershipPeriods] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedBatchDetails, setSelectedBatchDetails] = useState(null);
 
   // Authorization for Demo Mode (strictly restricted to administrators and authorized testers)
   const isAuthorizedTester = Boolean(
@@ -478,7 +479,7 @@ export function WalletView({ role = 'donor' }) {
                       {activePeriod?.eDate ? activePeriod.eDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '30-Day Cycle'}
                     </p>
                     <p className="text-xs text-brand-800 font-semibold pt-1">
-                      Rate: ₹{currentRewardRate} / 100 tokens (10 tokens/handover)
+                      Rate: ₹{currentRewardRate} / 100 tokens (10 tokens per 2 kg donated)
                     </p>
                   </div>
                 ) : nextUpcomingPass ? (
@@ -1255,43 +1256,79 @@ export function WalletView({ role = 'donor' }) {
                 <table className="w-full text-xs text-left">
                   <thead className="bg-stone-100 text-stone-800 text-[11px] font-bold uppercase tracking-wider border-b border-border">
                     <tr>
-                      <th className="py-2.5 px-3">Date</th>
-                      <th className="py-2.5 px-3">Donation / Event</th>
-                      <th className="py-2.5 px-3">Plan at Earning</th>
-                      <th className="py-2.5 px-3">Rate</th>
-                      <th className="py-2.5 px-3 text-right">Earned</th>
+                      <th className="py-2.5 px-3">Date & Time</th>
+                      <th className="py-2.5 px-3">Listing Reference</th>
+                      <th className="py-2.5 px-3 text-right">Quantity</th>
+                      <th className="py-2.5 px-3 text-right">Tokens</th>
+                      <th className="py-2.5 px-3">Plan & Rate</th>
+                      <th className="py-2.5 px-3">Status</th>
                       <th className="py-2.5 px-3 text-right">Remaining</th>
                       <th className="py-2.5 px-3 text-right">Est. Value</th>
+                      <th className="py-2.5 px-3 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {batches.map((b) => {
                       const dateStr = b.timestampMs
-                        ? new Date(b.timestampMs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                        ? new Date(b.timestampMs).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
                         : '—';
                       const value = Math.round((b.remainingTokens || 0) * (b.redemptionRate || 0) * 100) / 100;
+                      const qtyDisplay = b.foodQuantityKg != null ? `${b.foodQuantityKg} kg` : '—';
+                      const tokensDisplay = b.tokensEarned != null ? `+${b.tokensEarned}` : '—';
+
                       return (
-                        <tr key={b.id || b.batchId} className="hover:bg-stone-50 text-stone-800">
+                        <tr
+                          key={b.id || b.batchId}
+                          onClick={() => setSelectedBatchDetails(b)}
+                          className="hover:bg-stone-50 text-stone-800 cursor-pointer transition-colors"
+                        >
                           <td className="py-2.5 px-3 font-mono text-stone-700 whitespace-nowrap">{dateStr}</td>
                           <td className="py-2.5 px-3 font-semibold text-stone-900 max-w-[180px] truncate">
-                            {b.donationTitle || b.donationId || 'Food Handover'}
+                            <span className="text-brand-900 hover:underline">
+                              {b.listingId ? `${b.listingId} • ` : ''}{b.donationTitle || 'Food Handover'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-stone-900">
+                            {qtyDisplay}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-900">
+                            {tokensDisplay}
                           </td>
                           <td className="py-2.5 px-3">
-                            <Badge variant="outline" size="sm" className="text-[10px] bg-white border-stone-300 text-stone-800 font-semibold">
-                              {b.planNameAtEarning || b.planAtEarning}
-                            </Badge>
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant="outline" size="sm" className="text-[10px] bg-white border-stone-300 text-stone-800 font-semibold">
+                                {b.planNameAtEarning || b.planAtEarning || 'Fuel Support'}
+                              </Badge>
+                              <span className="text-[11px] font-mono text-stone-600">
+                                (₹{b.redemptionRatePer100 || (b.redemptionRate * 100)}/100)
+                              </span>
+                            </div>
                           </td>
-                          <td className="py-2.5 px-3 text-stone-800 font-mono font-medium">
-                            ₹{b.redemptionRatePer100 || (b.redemptionRate * 100)}/100
+                          <td className="py-2.5 px-3">
+                            <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300">
+                              Credited
+                            </span>
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-stone-900">
-                            {b.tokensEarned}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-900">
+                          <td className="py-2.5 px-3 text-right font-mono font-extrabold text-stone-900">
                             {b.remainingTokens}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-extrabold text-brand-900 text-sm">
                             ₹{value}
+                          </td>
+                          <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-[11px] px-2.5 py-1 h-auto text-brand-900 border-stone-300 hover:bg-brand-50"
+                              onClick={() => setSelectedBatchDetails(b)}
+                            >
+                              Inspect
+                            </Button>
                           </td>
                         </tr>
                       );
@@ -1494,6 +1531,146 @@ export function WalletView({ role = 'donor' }) {
             fetchWalletData();
           }}
         />
+      )}
+
+      {/* Reward Batch Traceability & Donation Linkage Modal */}
+      {selectedBatchDetails && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-border space-y-5 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-start justify-between border-b border-border pb-3">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-900 border border-emerald-200 text-[10px] font-bold uppercase tracking-wider mb-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-700" />
+                  <span>Verified Reward Transaction</span>
+                </div>
+                <h3 className="text-base font-bold text-stone-900">
+                  {selectedBatchDetails.donationTitle || 'Completed Donation Reward'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedBatchDetails(null)}
+                className="text-stone-400 hover:text-stone-700 p-1 rounded-lg hover:bg-stone-100 transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-stone-50 border border-border">
+                <div>
+                  <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wide block">
+                    Listing Reference
+                  </span>
+                  <span className="font-mono font-bold text-stone-900 text-xs">
+                    {selectedBatchDetails.listingId || selectedBatchDetails.donationId || 'FB-DONATION'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wide block">
+                    Food Quantity Donated
+                  </span>
+                  <span className="font-mono font-bold text-stone-900 text-xs">
+                    {selectedBatchDetails.foodQuantityKg != null ? `${selectedBatchDetails.foodQuantityKg} kg` : 'Recorded Handover'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wide block">
+                    Tokens Credited
+                  </span>
+                  <span className="font-mono font-black text-emerald-900 text-sm">
+                    +{selectedBatchDetails.tokensEarned} tokens
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wide block">
+                    Transaction Status
+                  </span>
+                  <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 mt-0.5">
+                    Credited
+                  </span>
+                </div>
+              </div>
+
+              {/* Formula & Calculation Box */}
+              <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1.5">
+                <span className="text-[10px] font-bold text-emerald-950 uppercase tracking-wider block">
+                  Reward Earning Rule & Calculation
+                </span>
+                <p className="font-mono font-semibold text-emerald-900 text-xs">
+                  {selectedBatchDetails.calculationDetails ||
+                    (selectedBatchDetails.foodQuantityKg != null
+                      ? `(${selectedBatchDetails.foodQuantityKg} kg / 2) × 10 = ${selectedBatchDetails.tokensEarned} tokens`
+                      : 'Standard Handover Reward')}
+                </p>
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  Earn 10 tokens for every 2 kg of food rescued. Fractional quantities calculate proportionally without rounding down.
+                </p>
+              </div>
+
+              {/* Plan Valuation Details */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex justify-between py-1 border-b border-border/60">
+                  <span className="text-stone-600">Plan at Earning:</span>
+                  <span className="font-semibold text-stone-900">
+                    {selectedBatchDetails.planNameAtEarning || selectedBatchDetails.planAtEarning || 'Fuel Support'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-border/60">
+                  <span className="text-stone-600">Applicable Redemption Rate:</span>
+                  <span className="font-mono font-semibold text-stone-900">
+                    ₹{selectedBatchDetails.redemptionRatePer100 || (selectedBatchDetails.redemptionRate * 100)} per 100 tokens
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-border/60">
+                  <span className="text-stone-600">Remaining in Batch:</span>
+                  <span className="font-mono font-bold text-stone-900">
+                    {selectedBatchDetails.remainingTokens} tokens
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-border/60">
+                  <span className="text-stone-600">Transaction ID:</span>
+                  <span className="font-mono text-stone-700 text-[11px] truncate max-w-[200px]" title={selectedBatchDetails.rewardTransactionId || selectedBatchDetails.batchId}>
+                    {selectedBatchDetails.rewardTransactionId || selectedBatchDetails.batchId}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-stone-600">Timestamp:</span>
+                  <span className="font-mono text-stone-700">
+                    {selectedBatchDetails.timestampMs
+                      ? new Date(selectedBatchDetails.timestampMs).toLocaleString('en-IN')
+                      : 'Recorded'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-border">
+              {onNavigateToHistory && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-stone-300 text-stone-700 hover:bg-stone-100 text-xs font-semibold"
+                  onClick={() => {
+                    setSelectedBatchDetails(null);
+                    onNavigateToHistory();
+                  }}
+                >
+                  <History className="w-3.5 h-3.5 mr-1 text-stone-600" />
+                  <span>View in Donation History</span>
+                </Button>
+              )}
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-brand-800 hover:bg-brand-700 text-white text-xs font-semibold px-4"
+                onClick={() => setSelectedBatchDetails(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

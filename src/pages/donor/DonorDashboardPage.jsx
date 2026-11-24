@@ -384,7 +384,7 @@ export function DonorDashboardPage() {
             Loading your listings...
           </div>
         ) : activeTab === 'wallet' ? (
-          <WalletView role="donor" />
+          <WalletView role="donor" onNavigateToHistory={() => setActiveTab('history')} />
         ) : activeTab === 'active' ? (
           /* Active Listings List */
           activeListings.length === 0 ? (

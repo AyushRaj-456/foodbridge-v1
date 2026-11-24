@@ -240,7 +240,7 @@ export function SupportPage() {
               {currentSelectedTier.id !== 'coffee' && (
                 <div className="pt-2 border-t border-border/80 flex items-center gap-1.5 text-emerald-800 font-semibold text-[11px]">
                   <Coins className="w-3.5 h-3.5" />
-                  <span>Tokens rewarded on completed handovers (10 tokens for Donors)</span>
+                  <span>Tokens rewarded on completed handovers (10 tokens for every 2 kg donated)</span>
                 </div>
               )}
             </div>

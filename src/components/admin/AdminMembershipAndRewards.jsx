@@ -54,6 +54,7 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
   // Filter states
   const [txFilter, setTxFilter] = useState('all'); // 'all' | 'completed' | 'failed' | 'cancelled'
   const [periodFilter, setPeriodFilter] = useState('all'); // 'all' | 'active' | 'upcoming' | 'cancelled' | 'expired'
+  const [rewardSearchQuery, setRewardSearchQuery] = useState('');
 
   // Reject Modal
   const [rejectModalReq, setRejectModalReq] = useState(null);
@@ -213,6 +214,18 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
   const filteredRedemptions = redemptions.filter((r) => {
     if (redemptionFilter === 'all') return true;
     return r.status === redemptionFilter;
+  });
+
+  const filteredLedgerBatches = ledgerBatches.filter((b) => {
+    if (!rewardSearchQuery.trim()) return true;
+    const q = rewardSearchQuery.toLowerCase().trim();
+    return (
+      (b.userId && b.userId.toLowerCase().includes(q)) ||
+      (b.donorName && b.donorName.toLowerCase().includes(q)) ||
+      (b.listingId && b.listingId.toLowerCase().includes(q)) ||
+      (b.donationId && b.donationId.toLowerCase().includes(q)) ||
+      (b.donationTitle && b.donationTitle.toLowerCase().includes(q))
+    );
   });
 
   return (
@@ -645,6 +658,106 @@ export function AdminMembershipAndRewards({ adminUid, subSection = 'memberships'
                         </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Card>
+
+          {/* Section 2.2: Reward Ledger Audit & Quantity Verifications (Requirement 10) */}
+          <Card className="p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-stone-900 text-sm">Reward Ledger Audit & Quantity Verifications</h3>
+                <p className="text-xs text-stone-600">
+                  Inspect donor accounts, original listings, food quantity (kg), calculated tokens, and active plan for each completed donation.
+                </p>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search donor or listing ID..."
+                  value={rewardSearchQuery}
+                  onChange={(e) => setRewardSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-border bg-surface text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              {filteredLedgerBatches.length === 0 ? (
+                <div className="py-10 text-center text-xs text-stone-500 space-y-1">
+                  <Coins className="w-8 h-8 text-stone-400 mx-auto" />
+                  <p className="font-semibold text-stone-800">No reward ledger records match search criteria</p>
+                  <p className="text-stone-500 text-[11px]">Completed verified food handovers earn 10 tokens per 2 kg donated.</p>
+                </div>
+              ) : (
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-surface-muted text-stone-700 font-semibold border-b border-border">
+                    <tr>
+                      <th className="py-2.5 px-3">Donor Account</th>
+                      <th className="py-2.5 px-3">Original Listing</th>
+                      <th className="py-2.5 px-3 text-right">Donation Qty</th>
+                      <th className="py-2.5 px-3 text-right">Tokens Calculated</th>
+                      <th className="py-2.5 px-3">Membership Plan</th>
+                      <th className="py-2.5 px-3">Reward Status</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filteredLedgerBatches.map((b) => {
+                      const dateStr = b.timestampMs
+                        ? new Date(b.timestampMs).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : '—';
+                      return (
+                        <tr key={b.id || b.batchId} className="hover:bg-surface-muted/50">
+                          <td className="py-2.5 px-3 font-medium text-stone-900">
+                            <div>{b.donorName || 'Donor'}</div>
+                            <div className="font-mono text-[11px] text-stone-500">{b.userId}</div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="font-semibold text-brand-900">{b.donationTitle || 'Food Donation'}</div>
+                            <div className="font-mono text-[11px] text-stone-500">{b.listingId || b.donationId || '—'}</div>
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-stone-900 whitespace-nowrap">
+                            {b.foodQuantityKg != null ? `${b.foodQuantityKg} kg` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <span className="font-mono font-bold text-emerald-900 text-xs">
+                              +{b.tokensEarned}
+                            </span>
+                            <div className="text-[10px] text-stone-500 font-mono">
+                              {b.calculationDetails || b.calculationFormula || (b.foodQuantityKg != null ? `(${b.foodQuantityKg}/2)*10` : '—')}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <Badge variant="outline" size="sm" className="text-[10px]">
+                              {b.planNameAtEarning || b.planAtEarning || 'Fuel Support'}
+                            </Badge>
+                            <span className="ml-1 text-[10px] text-stone-500 font-mono">
+                              (₹{b.redemptionRatePer100 || (b.redemptionRate * 100)}/100)
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <Badge variant="active" size="sm" className="text-[10px] font-bold">
+                              {(b.status || 'credited').toUpperCase()}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-stone-600 text-[11px] whitespace-nowrap">
+                            {dateStr}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
