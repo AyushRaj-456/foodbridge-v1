@@ -80,10 +80,21 @@ export async function getUserMembership(dbInstance = db, userId) {
       activePeriod: null,
       upcomingPeriods: [],
       allPeriods: [],
+      currentMembership: null,
+      upcomingMemberships: [],
+      nextUpcomingPeriod: null,
+      totalCoverage: {
+        totalDaysRemaining: 0,
+        finalExpiryDate: null,
+        totalPassesCount: 0,
+        queuedPassesCount: 0
+      },
       canEarnTokens: false,
       redemptionRatePer100: 0,
       isCancelled: false,
-      cancellationEffectiveDate: null
+      cancellationEffectiveDate: null,
+      latestTransactionId: null,
+      periodId: null
     };
   }
 
@@ -113,6 +124,7 @@ export async function getUserMembership(dbInstance = db, userId) {
       const evaluatedPeriods = periods.map((p) => {
         const start = parseDate(p.startDate);
         const exp = parseDate(p.expiryDate);
+        const purchase = parseDate(p.purchaseDate || p.createdAt);
         const startTime = start ? start.getTime() : 0;
         const expTime = exp ? exp.getTime() : 0;
         const isCancelled = Boolean(p.isCancelled || p.status === 'cancelled' || p.status === 'active_cancelled');
@@ -132,6 +144,7 @@ export async function getUserMembership(dbInstance = db, userId) {
           ...p,
           startDate: start,
           expiryDate: exp,
+          purchaseDate: purchase,
           startTime,
           expTime,
           computedStatus,
@@ -144,8 +157,14 @@ export async function getUserMembership(dbInstance = db, userId) {
         (p) => now >= p.startTime && now < p.expTime && p.computedStatus !== 'cancelled'
       );
 
-      // Filter upcoming queued periods
-      const upcomingPeriods = evaluatedPeriods.filter((p) => p.computedStatus === 'upcoming');
+      // Filter upcoming queued periods with explicit queue order
+      const upcomingPeriods = evaluatedPeriods
+        .filter((p) => p.computedStatus === 'upcoming')
+        .map((up, idx) => ({
+          ...up,
+          queueOrder: idx + 1,
+          durationDays: MEMBERSHIP_DURATION_DAYS
+        }));
 
       // Calculate total stacked expiry (the latest expiry date among active and upcoming)
       const validFuturePeriods = evaluatedPeriods.filter(
@@ -160,9 +179,38 @@ export async function getUserMembership(dbInstance = db, userId) {
         ? Math.max(0, Math.ceil((totalStackExpiry.getTime() - now) / MS_PER_DAY))
         : 0;
 
+      const totalCoverage = {
+        totalDaysRemaining: totalStackDaysRemaining,
+        finalExpiryDate: totalStackExpiry,
+        totalPassesCount: (activePeriod ? 1 : 0) + upcomingPeriods.length,
+        queuedPassesCount: upcomingPeriods.length
+      };
+
+      const nextUpcomingPeriod = upcomingPeriods.length > 0 ? upcomingPeriods[0] : null;
+
       if (activePeriod) {
         const planDetails = getPlanById(activePeriod.planId);
+        // Current cycle days remaining: bounded strictly to this active period (<= 30 days)
         const daysRemaining = Math.max(0, Math.ceil((activePeriod.expTime - now) / MS_PER_DAY));
+
+        const currentMembership = {
+          planId: activePeriod.planId,
+          planName: activePeriod.planName || planDetails?.name || 'Active Membership',
+          status: activePeriod.computedStatus,
+          isActive: true,
+          startDate: activePeriod.startDate,
+          expiryDate: activePeriod.expiryDate,
+          daysRemaining: Math.min(30, daysRemaining),
+          rewardRatePer100: planDetails?.redemptionRatePer100 || 0,
+          tokensPerHandover: 10,
+          canEarnTokens: Boolean(planDetails?.canEarnTokens),
+          periodId: activePeriod.periodId || activePeriod.id,
+          transactionId: activePeriod.transactionId || null,
+          isCancelled: Boolean(activePeriod.isCancelled),
+          cancellationEffectiveDate: activePeriod.isCancelled ? activePeriod.expiryDate : null,
+          paymentMethod: activePeriod.paymentMethod || 'card',
+          paymentMethodDetails: activePeriod.paymentMethodDetails || {}
+        };
 
         return {
           exists: true,
@@ -173,12 +221,16 @@ export async function getUserMembership(dbInstance = db, userId) {
           isActive: true,
           activatedAt: activePeriod.startDate,
           expiresAt: activePeriod.expiryDate,
-          daysRemaining,
+          daysRemaining: Math.min(30, daysRemaining),
           totalStackExpiry,
           totalStackDaysRemaining,
           activePeriod,
           upcomingPeriods,
           allPeriods: evaluatedPeriods,
+          currentMembership,
+          upcomingMemberships: upcomingPeriods,
+          nextUpcomingPeriod,
+          totalCoverage,
           canEarnTokens: Boolean(planDetails?.canEarnTokens),
           redemptionRatePer100: planDetails?.redemptionRatePer100 || 0,
           isCancelled: Boolean(activePeriod.isCancelled),
@@ -190,6 +242,27 @@ export async function getUserMembership(dbInstance = db, userId) {
 
       // No currently active period (either expired or only upcoming periods in future)
       const isExpired = evaluatedPeriods.some((p) => p.computedStatus === 'expired');
+      const latestExpiredPeriod = isExpired
+        ? evaluatedPeriods.filter((p) => p.computedStatus === 'expired').pop()
+        : null;
+
+      const currentMembership = {
+        planId: null,
+        planName: null,
+        status: upcomingPeriods.length > 0 ? 'upcoming' : isExpired ? 'expired' : 'none',
+        isActive: false,
+        startDate: null,
+        expiryDate: latestExpiredPeriod ? latestExpiredPeriod.expiryDate : null,
+        daysRemaining: 0,
+        rewardRatePer100: 0,
+        tokensPerHandover: 0,
+        canEarnTokens: false,
+        periodId: null,
+        transactionId: null,
+        isCancelled: false,
+        cancellationEffectiveDate: null
+      };
+
       return {
         exists: true,
         userId,
@@ -205,11 +278,16 @@ export async function getUserMembership(dbInstance = db, userId) {
         activePeriod: null,
         upcomingPeriods,
         allPeriods: evaluatedPeriods,
+        currentMembership,
+        upcomingMemberships: upcomingPeriods,
+        nextUpcomingPeriod,
+        totalCoverage,
         canEarnTokens: false,
         redemptionRatePer100: 0,
         isCancelled: false,
         cancellationEffectiveDate: null,
-        latestTransactionId: null
+        latestTransactionId: null,
+        periodId: null
       };
     }
 
@@ -233,10 +311,21 @@ export async function getUserMembership(dbInstance = db, userId) {
         activePeriod: null,
         upcomingPeriods: [],
         allPeriods: [],
+        currentMembership: null,
+        upcomingMemberships: [],
+        nextUpcomingPeriod: null,
+        totalCoverage: {
+          totalDaysRemaining: 0,
+          finalExpiryDate: null,
+          totalPassesCount: 0,
+          queuedPassesCount: 0
+        },
         canEarnTokens: false,
         redemptionRatePer100: 0,
         isCancelled: false,
-        cancellationEffectiveDate: null
+        cancellationEffectiveDate: null,
+        latestTransactionId: null,
+        periodId: null
       };
     }
 
@@ -258,10 +347,21 @@ export async function getUserMembership(dbInstance = db, userId) {
         activePeriod: null,
         upcomingPeriods: [],
         allPeriods: [],
+        currentMembership: null,
+        upcomingMemberships: [],
+        nextUpcomingPeriod: null,
+        totalCoverage: {
+          totalDaysRemaining: 0,
+          finalExpiryDate: null,
+          totalPassesCount: 0,
+          queuedPassesCount: 0
+        },
         canEarnTokens: false,
         redemptionRatePer100: 0,
         isCancelled: false,
-        cancellationEffectiveDate: null
+        cancellationEffectiveDate: null,
+        latestTransactionId: null,
+        periodId: null
       };
     }
 
@@ -271,9 +371,35 @@ export async function getUserMembership(dbInstance = db, userId) {
     const expTime = expiresAt ? expiresAt.getTime() : 0;
     const isActive = expTime > now;
     const status = isActive ? 'active' : 'expired';
-    const daysRemaining = isActive ? Math.max(0, Math.ceil((expTime - now) / MS_PER_DAY)) : 0;
+    const totalStackDaysRemaining = isActive ? Math.max(0, Math.ceil((expTime - now) / MS_PER_DAY)) : 0;
+    // Current cycle days remaining: capped strictly to at most 30 days
+    const daysRemaining = Math.min(30, totalStackDaysRemaining);
 
     const planDetails = getPlanById(data.activePlan);
+
+    const currentMembership = isActive ? {
+      planId: data.activePlan || null,
+      planName: planDetails?.name || data.planName || 'Active Donor Member',
+      status: data.isCancelled ? 'active_cancelled' : 'active',
+      isActive: true,
+      startDate: activatedAt,
+      expiryDate: data.currentPeriodExpiryDate ? parseDate(data.currentPeriodExpiryDate) : expiresAt,
+      daysRemaining,
+      rewardRatePer100: planDetails?.redemptionRatePer100 || 0,
+      tokensPerHandover: 10,
+      canEarnTokens: Boolean(planDetails?.canEarnTokens),
+      periodId: data.periodId || null,
+      transactionId: data.latestTransactionId || null,
+      isCancelled: Boolean(data.isCancelled),
+      cancellationEffectiveDate: parseDate(data.cancellationEffectiveDate)
+    } : null;
+
+    const totalCoverage = {
+      totalDaysRemaining: totalStackDaysRemaining,
+      finalExpiryDate: expiresAt,
+      totalPassesCount: isActive ? Math.max(1, Math.ceil(totalStackDaysRemaining / 30)) : 0,
+      queuedPassesCount: isActive ? Math.max(0, Math.ceil(totalStackDaysRemaining / 30) - 1) : 0
+    };
 
     return {
       exists: true,
@@ -286,15 +412,20 @@ export async function getUserMembership(dbInstance = db, userId) {
       expiresAt,
       daysRemaining,
       totalStackExpiry: expiresAt,
-      totalStackDaysRemaining: daysRemaining,
+      totalStackDaysRemaining,
       activePeriod: null,
       upcomingPeriods: [],
       allPeriods: [],
+      currentMembership,
+      upcomingMemberships: [],
+      nextUpcomingPeriod: null,
+      totalCoverage,
       canEarnTokens: isActive && Boolean(planDetails?.canEarnTokens),
       redemptionRatePer100: planDetails?.redemptionRatePer100 || 0,
       isCancelled: Boolean(data.isCancelled),
       cancellationEffectiveDate: parseDate(data.cancellationEffectiveDate),
-      latestTransactionId: data.latestTransactionId || null
+      latestTransactionId: data.latestTransactionId || null,
+      periodId: data.periodId || null
     };
   } catch (err) {
     console.warn('Notice reading membership:', err.message);
@@ -313,10 +444,21 @@ export async function getUserMembership(dbInstance = db, userId) {
       activePeriod: null,
       upcomingPeriods: [],
       allPeriods: [],
+      currentMembership: null,
+      upcomingMemberships: [],
+      nextUpcomingPeriod: null,
+      totalCoverage: {
+        totalDaysRemaining: 0,
+        finalExpiryDate: null,
+        totalPassesCount: 0,
+        queuedPassesCount: 0
+      },
       canEarnTokens: false,
       redemptionRatePer100: 0,
       isCancelled: false,
-      cancellationEffectiveDate: null
+      cancellationEffectiveDate: null,
+      latestTransactionId: null,
+      periodId: null
     };
   }
 }
@@ -355,7 +497,8 @@ export function subscribeToUserMembership(dbInstance = db, userId, callback) {
       const expTime = expiresAt ? expiresAt.getTime() : 0;
       const isActive = expTime > now;
       const status = isActive ? 'active' : 'expired';
-      const daysRemaining = isActive ? Math.max(0, Math.ceil((expTime - now) / MS_PER_DAY)) : 0;
+      const totalDays = isActive ? Math.max(0, Math.ceil((expTime - now) / MS_PER_DAY)) : 0;
+      const daysRemaining = Math.min(30, totalDays);
       const planDetails = getPlanById(data.activePlan);
 
       callback({
@@ -368,6 +511,14 @@ export function subscribeToUserMembership(dbInstance = db, userId, callback) {
         activatedAt,
         expiresAt,
         daysRemaining,
+        totalStackDaysRemaining: totalDays,
+        totalStackExpiry: expiresAt,
+        totalCoverage: {
+          totalDaysRemaining: totalDays,
+          finalExpiryDate: expiresAt,
+          totalPassesCount: isActive ? Math.max(1, Math.ceil(totalDays / 30)) : 0,
+          queuedPassesCount: isActive ? Math.max(0, Math.ceil(totalDays / 30) - 1) : 0
+        },
         canEarnTokens: isActive && Boolean(planDetails?.canEarnTokens),
         redemptionRatePer100: planDetails?.redemptionRatePer100 || 0,
         latestTransactionId: data.latestTransactionId || null
@@ -602,12 +753,14 @@ export async function processSimulatedSupportPayment(dbInstance = db, {
     let activePlanId = plan.id;
     let activePlanName = plan.name;
     let activatedAt = newStartDate;
+    let currentPeriodExpiryDate = newExpiryDate;
 
     if (periodStatus === 'upcoming' && existingMemSnap.exists()) {
       const emData = existingMemSnap.data();
       activePlanId = emData.activePlan || plan.id;
       activePlanName = emData.planName || plan.name;
       activatedAt = parseDate(emData.activatedAt) || now;
+      currentPeriodExpiryDate = parseDate(emData.currentPeriodExpiryDate) || parseDate(emData.expiresAt) || newExpiryDate;
     }
 
     await setDoc(memRef, {
@@ -617,7 +770,9 @@ export async function processSimulatedSupportPayment(dbInstance = db, {
       planName: activePlanName,
       status: 'active',
       activatedAt,
+      currentPeriodExpiryDate,
       expiresAt: newExpiryDate,
+      totalStackExpiry: newExpiryDate,
       latestTransactionId: txId,
       updatedAt: serverTimestamp()
     }, { merge: true });

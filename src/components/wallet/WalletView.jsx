@@ -18,7 +18,6 @@ import {
   CreditCard,
   Clock,
   CheckCircle2,
-  AlertCircle,
   AlertTriangle,
   History,
   ShieldCheck,
@@ -31,7 +30,15 @@ import {
   Calendar,
   XCircle,
   Ban,
-  Filter
+  Filter,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  SlidersHorizontal,
+  RotateCcw,
+  Check,
+  ArrowRight
 } from 'lucide-react';
 
 export function WalletView({ role = 'donor' }) {
@@ -43,12 +50,25 @@ export function WalletView({ role = 'donor' }) {
   const [membershipPeriods, setMembershipPeriods] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Modals & Subtabs
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showRedeemModal, setShowRedeemModal] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState('schedule'); // 'schedule' | 'batches' | 'redemptions' | 'contributions'
-  const [txFilter, setTxFilter] = useState('all'); // 'all' | 'completed' | 'failed' | 'cancelled'
+  const [activeSubTab, setActiveSubTab] = useState('schedule'); // 'schedule' | 'contributions' | 'batches' | 'redemptions'
+
+  // Interactive timeline accordion
+  const [expandedPeriodId, setExpandedPeriodId] = useState(null);
+
+  // Notifications
   const [notice, setNotice] = useState('');
   const [errorNotice, setErrorNotice] = useState('');
+
+  // Payment History filters & search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [txFilter, setTxFilter] = useState('all'); // 'all' | 'completed' | 'failed' | 'cancelled'
+  const [methodFilter, setMethodFilter] = useState('all'); // 'all' | 'card' | 'upi' | 'net_banking'
+  const [purposeFilter, setPurposeFilter] = useState('all'); // 'all' | 'memberships' | 'coffee'
+  const [datePreset, setDatePreset] = useState('all'); // 'all' | '30' | '90'
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' | 'asc'
 
   // Cancellation modal state
   const [cancellingPeriod, setCancellingPeriod] = useState(null);
@@ -87,23 +107,90 @@ export function WalletView({ role = 'donor' }) {
   const availableTokens = wallet?.availableTokens || 0;
   const batches = wallet?.batches || [];
 
-  // Compute upcoming and active periods
   const now = Date.now();
-  const activePeriod = membershipPeriods.find((p) => {
-    const s = parseDate(p.startDate)?.getTime() || 0;
-    const e = parseDate(p.expiryDate)?.getTime() || 0;
-    return now >= s && now < e && p.status !== 'cancelled';
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+  // Evaluate and classify all membership passes from actual Firestore periods
+  const sortedPeriods = [...membershipPeriods].sort((a, b) => {
+    const sA = parseDate(a.startDate)?.getTime() || a.timestampMs || 0;
+    const sB = parseDate(b.startDate)?.getTime() || b.timestampMs || 0;
+    return sA - sB;
   });
 
-  const upcomingPeriods = membershipPeriods.filter((p) => {
-    const s = parseDate(p.startDate)?.getTime() || 0;
-    return s > now && p.status !== 'cancelled';
+  const evaluatedPeriods = sortedPeriods.map((p) => {
+    const sDate = parseDate(p.startDate);
+    const eDate = parseDate(p.expiryDate);
+    const pDate = parseDate(p.purchaseDate || p.createdAt);
+    const sTime = sDate ? sDate.getTime() : 0;
+    const eTime = eDate ? eDate.getTime() : 0;
+    const isCancelled = Boolean(p.isCancelled || p.status === 'cancelled' || p.status === 'active_cancelled');
+
+    let status = p.status || 'active';
+    if (p.status === 'cancelled') {
+      status = 'cancelled';
+    } else if (now >= sTime && now < eTime) {
+      status = isCancelled ? 'active_cancelled' : 'active';
+    } else if (sTime > now && !isCancelled) {
+      status = 'upcoming';
+    } else if (eTime <= now) {
+      status = 'expired';
+    }
+
+    return {
+      ...p,
+      sDate,
+      eDate,
+      pDate,
+      sTime,
+      eTime,
+      computedStatus: status,
+      isCancelled
+    };
   });
 
-  const pastOrCancelledPeriods = membershipPeriods.filter((p) => {
-    const e = parseDate(p.expiryDate)?.getTime() || 0;
-    return e <= now || p.status === 'cancelled';
-  });
+  // A. Current Membership pass
+  const activePeriod = evaluatedPeriods.find(
+    (p) => now >= p.sTime && now < p.eTime && p.computedStatus !== 'cancelled'
+  );
+
+  // B. Upcoming Queued passes with explicit Queue order
+  const upcomingPeriods = evaluatedPeriods
+    .filter((p) => p.computedStatus === 'upcoming')
+    .map((up, idx) => ({ ...up, queueOrder: idx + 1 }));
+
+  const nextUpcomingPass = upcomingPeriods.length > 0 ? upcomingPeriods[0] : null;
+
+  // C. Total Membership Coverage calculation
+  const validFuturePeriods = evaluatedPeriods.filter(
+    (p) => p.eTime > now && p.computedStatus !== 'cancelled'
+  );
+  const calculatedTotalExpiryTime = validFuturePeriods.reduce(
+    (max, p) => Math.max(max, p.eTime),
+    activePeriod ? activePeriod.eTime : 0
+  );
+  const totalCoverageExpiry = calculatedTotalExpiryTime > 0
+    ? new Date(calculatedTotalExpiryTime)
+    : (membership?.totalCoverage?.finalExpiryDate ? parseDate(membership.totalCoverage.finalExpiryDate) : parseDate(membership?.expiresAt));
+
+  const totalCoverageDays = totalCoverageExpiry
+    ? Math.max(0, Math.ceil((totalCoverageExpiry.getTime() - now) / MS_PER_DAY))
+    : (membership?.totalCoverage?.totalDaysRemaining || 0);
+
+  // Current pass days remaining: strictly capped to <= 30 days
+  const currentPassDaysRemaining = activePeriod
+    ? Math.max(0, Math.ceil((activePeriod.eTime - now) / MS_PER_DAY))
+    : (membership?.currentMembership?.daysRemaining || (isMemberActive ? Math.min(30, membership?.daysRemaining || 0) : 0));
+
+  // Current active plan name
+  const currentPlanName = activePeriod?.planName
+    || membership?.currentMembership?.planName
+    || membership?.planDetails?.name
+    || (isMemberActive ? 'Active Donor Member' : 'No Active Membership');
+
+  // Current reward rate
+  const currentRewardRate = activePeriod?.planId === 'corridor_help' || membership?.activePlan === 'corridor_help'
+    ? 6
+    : (membership?.currentMembership?.rewardRatePer100 || membership?.redemptionRatePer100 || 2);
 
   // Handle cancellation action
   const handleConfirmCancel = async () => {
@@ -116,7 +203,7 @@ export function WalletView({ role = 'donor' }) {
         periodId: cancellingPeriod.periodId || cancellingPeriod.id,
         cancellationReason: cancellationReason || 'Donor requested cancellation'
       });
-      setNotice(res.message || 'Membership period updated.');
+      setNotice(res.message || 'Membership period updated successfully.');
       setCancellingPeriod(null);
       await fetchWalletData();
     } catch (err) {
@@ -127,20 +214,70 @@ export function WalletView({ role = 'donor' }) {
     }
   };
 
-  // Filtered transactions for payment history
-  const filteredTxns = supportTxns.filter((tx) => {
-    if (txFilter === 'all') return true;
-    return (tx.paymentStatus || 'completed') === txFilter;
-  });
+  // Payment History Filtered Transactions
+  const filteredTxns = supportTxns
+    .filter((tx) => {
+      // 1. Status filter
+      const status = tx.paymentStatus || 'completed';
+      if (txFilter !== 'all' && status !== txFilter) return false;
 
-  // Payment KPIs
-  const totalSpent = supportTxns
-    .filter((t) => (t.paymentStatus || 'completed') === 'completed')
-    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      // 2. Method filter
+      if (methodFilter !== 'all' && tx.paymentMethod !== methodFilter) return false;
 
-  const completedCount = supportTxns.filter((t) => (t.paymentStatus || 'completed') === 'completed').length;
-  const failedCount = supportTxns.filter((t) => t.paymentStatus === 'failed').length;
-  const cancelledCount = supportTxns.filter((t) => t.paymentStatus === 'cancelled').length;
+      // 3. Purpose filter
+      if (purposeFilter === 'memberships' && !tx.activatesMembership) return false;
+      if (purposeFilter === 'coffee' && tx.activatesMembership) return false;
+
+      // 4. Date preset filter
+      if (datePreset !== 'all') {
+        const txTime = tx.timestampMs || parseDate(tx.createdAt)?.getTime() || 0;
+        const daysAgo = (now - txTime) / MS_PER_DAY;
+        if (datePreset === '30' && daysAgo > 30) return false;
+        if (datePreset === '90' && daysAgo > 90) return false;
+      }
+
+      // 5. Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const txId = (tx.transactionId || tx.id || '').toLowerCase();
+        const pName = (tx.planName || '').toLowerCase();
+        const method = (tx.paymentMethod || '').toLowerCase();
+        const pId = (tx.periodId || '').toLowerCase();
+        if (!txId.includes(q) && !pName.includes(q) && !method.includes(q) && !pId.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      const tA = a.timestampMs || parseDate(a.createdAt)?.getTime() || 0;
+      const tB = b.timestampMs || parseDate(b.createdAt)?.getTime() || 0;
+      return sortOrder === 'asc' ? tA - tB : tB - tA;
+    });
+
+  const hasActiveFilters = txFilter !== 'all' || methodFilter !== 'all' || purposeFilter !== 'all' || datePreset !== 'all' || searchQuery.trim().length > 0 || sortOrder !== 'desc';
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setTxFilter('all');
+    setMethodFilter('all');
+    setPurposeFilter('all');
+    setDatePreset('all');
+    setSortOrder('desc');
+  };
+
+  // KPI Calculations
+  const completedTxns = supportTxns.filter((t) => (t.paymentStatus || 'completed') === 'completed');
+  const membershipTxns = completedTxns.filter((t) => t.activatesMembership);
+  const coffeeTxns = completedTxns.filter((t) => !t.activatesMembership);
+
+  const totalSpentOnMemberships = membershipTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const totalCoffeeSpent = coffeeTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const totalSpentAll = totalSpentOnMemberships + totalCoffeeSpent;
+
+  const expiredPassesCount = evaluatedPeriods.filter((p) => p.computedStatus === 'expired').length;
+  const cancelledPassesCount = evaluatedPeriods.filter((p) => p.computedStatus === 'cancelled' || p.computedStatus === 'active_cancelled').length;
 
   return (
     <div className="space-y-6">
@@ -177,163 +314,277 @@ export function WalletView({ role = 'donor' }) {
         </div>
       )}
 
-      {/* 1. Membership Status & Stacking Header Card */}
-      <Card className="p-5 sm:p-6 bg-gradient-to-br from-stone-900 via-stone-850 to-stone-800 text-white border-stone-800 shadow-md">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold uppercase tracking-wider text-stone-300">
-                Support Membership
+      {/* 1. REDESIGNED MEMBERSHIP OVERVIEW SECTION (SEPARATES CURRENT, UPCOMING & TOTAL COVERAGE) */}
+      <Card className="p-5 sm:p-6 bg-stone-900 text-white border-stone-800 shadow-lg overflow-hidden relative">
+        {/* Subtle decorative gradient background */}
+        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-emerald-900/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-64 h-64 bg-brand-900/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 space-y-5">
+          {/* Header Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800/80 pb-4">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400 block mb-0.5">
+                Donor Support Membership Overview
               </span>
-              {isMemberActive ? (
-                membership?.isCancelled ? (
-                  <span className="inline-flex items-center text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-400 text-stone-950 border border-amber-300 shadow-sm">
-                    CANCELLED (ACTIVE UNTIL EXPIRY)
+              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white flex items-center gap-2">
+                <span>{currentPlanName}</span>
+                {isMemberActive ? (
+                  activePeriod?.isCancelled || membership?.isCancelled ? (
+                    <span className="inline-flex items-center text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-400 text-stone-950 border border-amber-300 shadow-sm">
+                      NON-RENEWING
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-400 text-stone-950 border border-emerald-300 shadow-sm">
+                      ACTIVE
+                    </span>
+                  )
+                ) : nextUpcomingPass ? (
+                  <span className="inline-flex items-center text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-400 text-stone-950 border border-blue-300 shadow-sm">
+                    SCHEDULED
                   </span>
                 ) : (
-                  <span className="inline-flex items-center text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-400 text-stone-950 border border-emerald-300 shadow-sm">
-                    ACTIVE
+                  <span className="inline-flex items-center text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-stone-700 text-stone-200 border border-stone-600 shadow-sm">
+                    INACTIVE
                   </span>
-                )
-              ) : membership?.status === 'expired' ? (
-                <span className="inline-flex items-center text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-400 text-stone-950 border border-amber-300 shadow-sm">
-                  EXPIRED
-                </span>
-              ) : (
-                <span className="inline-flex items-center text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-stone-700 text-stone-100 border border-stone-600 shadow-sm">
-                  NO MEMBERSHIP
-                </span>
-              )}
-
-              {upcomingPeriods.length > 0 && (
-                <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-950 text-blue-200 border border-blue-500 shadow-sm">
-                  +{upcomingPeriods.length} QUEUED PASS{upcomingPeriods.length > 1 ? 'ES' : ''}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-                {membership?.planDetails?.name || (isMemberActive ? 'Active Donor Member' : 'Community Member')}
+                )}
               </h2>
-              {isMemberActive && (
-                <span className="text-xs text-emerald-400 font-medium">
-                  ({membership.daysRemaining} days left in current cycle)
-                </span>
-              )}
             </div>
 
-            <p className="text-xs text-stone-300 leading-relaxed max-w-xl">
-              {isMemberActive ? (
-                <>
-                  Earn <strong>10 tokens</strong> on every verified completed donation handover. Current redemption rate: <strong>₹{membership.redemptionRatePer100} / 100 tokens</strong>.
-                  {membership.totalStackDaysRemaining > membership.daysRemaining && (
-                    <span className="block mt-1 text-emerald-300 font-medium">
-                      Consecutive Stacking: Total combined coverage of <strong>{membership.totalStackDaysRemaining} days</strong> (valid until {membership.totalStackExpiry ? new Date(membership.totalStackExpiry).toLocaleDateString() : 'scheduled date'}).
-                    </span>
-                  )}
-                  {membership.isCancelled && (
-                    <span className="block mt-1 text-amber-300">
-                      Cancellation requested: Benefits remain active until {membership.expiresAt ? new Date(membership.expiresAt).toLocaleDateString() : 'end of period'}, and will not auto-renew.
-                    </span>
-                  )}
-                </>
-              ) : membership?.status === 'expired' ? (
-                <>
-                  Your membership has expired. Existing reward tokens remain safely in your wallet. Activate a membership to earn new tokens and unlock redemptions.
-                </>
-              ) : (
-                <>
-                  Voluntary support memberships enable token rewards for food rescue handovers. Multiple purchases stack consecutively without overlap.
-                </>
-              )}
-            </p>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold border-none shadow-sm"
+                onClick={() => setShowPaymentModal(true)}
+              >
+                <CreditCard className="w-4 h-4 mr-1.5" />
+                <span>{isMemberActive ? 'Add 30-Day Pass (Stack)' : 'Join Support Membership'}</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-stone-300 border-stone-700 hover:bg-stone-800 hover:text-white text-xs px-2.5"
+                onClick={fetchWalletData}
+                disabled={loading}
+                title="Refresh balance and periods"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0">
-            <Button
-              variant="primary"
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-500 text-white border-none shadow-sm justify-center"
-              onClick={() => setShowPaymentModal(true)}
-            >
-              <CreditCard className="w-4 h-4 mr-1.5" />
-              <span>{isMemberActive ? 'Add 30-Day Pass (Stack)' : 'Activate Membership'}</span>
-            </Button>
+          {/* Three Separate Concept Cards: Current, Upcoming, Total Coverage */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            {/* BLOCK A: CURRENT MEMBERSHIP */}
+            <div className="p-4 rounded-xl bg-stone-800/80 border border-stone-700/80 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    A. Current Pass
+                  </span>
+                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
 
-            {isMemberActive && !membership?.isCancelled && activePeriod && (
-              <button
-                type="button"
-                onClick={() => setCancellingPeriod(activePeriod)}
-                className="text-[11px] text-stone-400 hover:text-red-400 text-center py-1 underline transition-colors"
-              >
-                Cancel Active Membership (Simulation)
-              </button>
-            )}
+                {isMemberActive ? (
+                  <div className="space-y-1">
+                    <div className="text-lg font-bold text-white flex items-baseline gap-1.5">
+                      <span>{currentPassDaysRemaining} Days</span>
+                      <span className="text-xs text-stone-400 font-normal">left in active pass</span>
+                    </div>
+                    <p className="text-xs text-stone-300 font-mono">
+                      {activePeriod?.sDate ? activePeriod.sDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Active'} →{' '}
+                      {activePeriod?.eDate ? activePeriod.eDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '30-Day Cycle'}
+                    </p>
+                    <p className="text-[11px] text-emerald-300 pt-1">
+                      Rate: <strong>₹{currentRewardRate} / 100 tokens</strong> (10 tokens/handover)
+                    </p>
+                  </div>
+                ) : nextUpcomingPass ? (
+                  <div className="space-y-1">
+                    <span className="text-sm font-semibold text-amber-300 block">Current Pass Expired</span>
+                    <p className="text-xs text-stone-300">
+                      Previous pass completed. Next pass activates on{' '}
+                      <strong className="text-white">
+                        {nextUpcomingPass.sDate ? nextUpcomingPass.sDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'scheduled date'}
+                      </strong>.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <span className="text-sm font-semibold text-stone-300 block">No Active Pass</span>
+                    <p className="text-xs text-stone-400">
+                      Activate a voluntary support pass to earn reward tokens for every verified donation handover.
+                    </p>
+                  </div>
+                )}
+              </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-stone-300 border-stone-700 hover:bg-stone-800 hover:text-white justify-center text-xs"
-              onClick={fetchWalletData}
-              disabled={loading}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Refresh Balance</span>
-            </Button>
+              {isMemberActive && activePeriod && !activePeriod.isCancelled && (
+                <button
+                  type="button"
+                  onClick={() => setCancellingPeriod(activePeriod)}
+                  className="text-[11px] text-stone-400 hover:text-red-400 text-left underline transition-colors pt-1"
+                >
+                  Cancel active pass (simulation)
+                </button>
+              )}
+            </div>
+
+            {/* BLOCK B: UPCOMING MEMBERSHIPS */}
+            <div className="p-4 rounded-xl bg-stone-800/80 border border-stone-700/80 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">
+                    B. Upcoming Memberships
+                  </span>
+                  <Layers className="w-3.5 h-3.5 text-blue-400" />
+                </div>
+
+                {upcomingPeriods.length > 0 ? (
+                  <div className="space-y-1">
+                    <div className="text-lg font-bold text-white flex items-baseline gap-1.5">
+                      <span>{upcomingPeriods.length} Queued Pass{upcomingPeriods.length > 1 ? 'es' : ''}</span>
+                    </div>
+                    <div className="text-xs text-blue-200">
+                      <strong>Queue #1: {nextUpcomingPass.planName}</strong>
+                    </div>
+                    <p className="text-xs text-stone-300 font-mono">
+                      Starts: {nextUpcomingPass.sDate ? nextUpcomingPass.sDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Scheduled'}
+                    </p>
+                    <p className="text-[11px] text-stone-400">
+                      Expires: {nextUpcomingPass.eDate ? nextUpcomingPass.eDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Scheduled'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <span className="text-sm font-semibold text-stone-300 block">0 Passes Queued</span>
+                    <p className="text-xs text-stone-400">
+                      Purchasing additional passes stacks them consecutively without overlapping or wasting coverage days.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-[11px] text-stone-400 pt-1">
+                {upcomingPeriods.length > 0 ? (
+                  <span className="text-blue-300">Activates automatically upon cycle completion</span>
+                ) : (
+                  <span>Ready for consecutive extension</span>
+                )}
+              </div>
+            </div>
+
+            {/* BLOCK C: TOTAL MEMBERSHIP COVERAGE */}
+            <div className="p-4 rounded-xl bg-stone-800/80 border border-stone-700/80 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
+                    C. Total Coverage
+                  </span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-lg font-bold text-white flex items-baseline gap-1.5">
+                    <span>{totalCoverageDays} Days</span>
+                    <span className="text-xs text-stone-400 font-normal">total remaining</span>
+                  </div>
+                  {totalCoverageExpiry && totalCoverageDays > 0 ? (
+                    <p className="text-xs text-purple-200">
+                      Membership valid until{' '}
+                      <strong className="text-white">
+                        {totalCoverageExpiry.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </strong>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-stone-400">No remaining coverage scheduled.</p>
+                  )}
+                  <p className="text-[11px] text-stone-400 pt-1">
+                    {(activePeriod ? 1 : 0) + upcomingPeriods.length} active & stacked pass{((activePeriod ? 1 : 0) + upcomingPeriods.length) === 1 ? '' : 'es'} in total.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('schedule')}
+                  className="text-[11px] text-purple-300 hover:text-purple-200 flex items-center gap-1 font-medium transition-colors"
+                >
+                  <span>View Timeline Schedule</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </Card>
 
-      {/* 2. Key Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      {/* 2. MEMBERSHIP PURCHASE SUMMARY (KPIS & STATS) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
         {/* Available Tokens */}
-        <Card className="p-4 sm:p-5 border-emerald-200/80 bg-emerald-50/30">
-          <div className="flex items-center justify-between text-stone-500 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-950">Available Tokens</span>
-            <Coins className="w-4 h-4 text-emerald-700" />
+        <Card className="p-3.5 sm:p-4 border-emerald-200/80 bg-emerald-50/40">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-950 block">Available Tokens</span>
+          <div className="text-xl sm:text-2xl font-extrabold text-emerald-900 font-mono mt-1">
+            {availableTokens}
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-900 font-mono">
-            {wallet?.availableTokens || 0}
-          </div>
-          <span className="text-[11px] text-stone-500 block mt-1">Ready for redemption</span>
+          <span className="text-[10px] text-emerald-800 block mt-0.5">Ready to redeem</span>
         </Card>
 
-        {/* Estimated Value */}
-        <Card className="p-4 sm:p-5 border-brand-200/80 bg-brand-50/30">
-          <div className="flex items-center justify-between text-stone-500 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-brand-950">Est. Redeemable Value</span>
-            <Sparkles className="w-4 h-4 text-brand-700" />
-          </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-brand-900 font-mono">
+        {/* Est. Redeemable Value */}
+        <Card className="p-3.5 sm:p-4 border-brand-200/80 bg-brand-50/40">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-brand-950 block">Redeemable Value</span>
+          <div className="text-xl sm:text-2xl font-extrabold text-brand-900 font-mono mt-1">
             ₹{wallet?.estimatedRedeemableValue || 0}
           </div>
-          <span className="text-[11px] text-stone-500 block mt-1">Plan-based FIFO valuation</span>
+          <span className="text-[10px] text-brand-800 block mt-0.5">Plan FIFO rate</span>
         </Card>
 
-        {/* Total Simulated Spent */}
-        <Card className="p-4 sm:p-5">
-          <div className="flex items-center justify-between text-stone-500 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-stone-700">Total Support Spent</span>
-            <CreditCard className="w-4 h-4 text-brand-700" />
+        {/* Total Support Spent */}
+        <Card className="p-3.5 sm:p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600 block">Total Demo Spent</span>
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono mt-1">
+            ₹{totalSpentAll}
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-stone-900 font-mono">
-            ₹{totalSpent}
-          </div>
-          <span className="text-[11px] text-stone-500 block mt-1">({completedCount} verified demo txns)</span>
+          <span className="text-[10px] text-stone-500 block mt-0.5">{completedTxns.length} successful txns</span>
         </Card>
 
-        {/* Queued Passes */}
-        <Card className="p-4 sm:p-5">
-          <div className="flex items-center justify-between text-stone-500 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-stone-700">Stacked Passes</span>
-            <Layers className="w-4 h-4 text-blue-700" />
+        {/* Membership Purchases */}
+        <Card className="p-3.5 sm:p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600 block">Membership Passes</span>
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono mt-1">
+            {membershipTxns.length}
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-stone-900 font-mono">
+          <span className="text-[10px] text-stone-500 block mt-0.5">₹{totalSpentOnMemberships} spent</span>
+        </Card>
+
+        {/* Coffee Contributions */}
+        <Card className="p-3.5 sm:p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600 block">Coffee Support</span>
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono mt-1">
+            {coffeeTxns.length}
+          </div>
+          <span className="text-[10px] text-stone-500 block mt-0.5">₹{totalCoffeeSpent} voluntary</span>
+        </Card>
+
+        {/* Active & Queued */}
+        <Card className="p-3.5 sm:p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600 block">Active & Queued</span>
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono mt-1">
             {(activePeriod ? 1 : 0) + upcomingPeriods.length}
           </div>
-          <span className="text-[11px] text-stone-500 block mt-1">
-            {upcomingPeriods.length} queued for future dates
+          <span className="text-[10px] text-stone-500 block mt-0.5">{upcomingPeriods.length} in queue</span>
+        </Card>
+
+        {/* Total Coverage */}
+        <Card className="p-3.5 sm:p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600 block">Total Coverage</span>
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 font-mono mt-1">
+            {totalCoverageDays}d
+          </div>
+          <span className="text-[10px] text-stone-500 block mt-0.5 truncate" title={totalCoverageExpiry ? totalCoverageExpiry.toLocaleDateString() : 'None'}>
+            {totalCoverageExpiry ? `Until ${totalCoverageExpiry.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : 'No coverage'}
           </span>
         </Card>
       </div>
@@ -341,11 +592,14 @@ export function WalletView({ role = 'donor' }) {
       {/* 3. Action Bar: Redeem Tokens CTA */}
       <div className="p-4 rounded-xl bg-surface-muted border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h4 className="text-sm font-bold text-stone-900">Redeem Tokens for Monetary Rewards</h4>
-          <p className="text-xs text-stone-600">
+          <h4 className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
+            <Coins className="w-4 h-4 text-emerald-700" />
+            <span>Redeem Tokens for Monetary Rewards</span>
+          </h4>
+          <p className="text-xs text-stone-600 mt-0.5">
             {isMemberActive
-              ? 'Minimum redemption: 100 tokens (multiples of 100). Payout calculated via FIFO across original earning plans.'
-              : 'Active membership required to redeem tokens. Your existing tokens remain safely preserved.'}
+              ? 'Minimum redemption: 100 tokens (multiples of 100). Payout calculated via FIFO based on the plan under which each token was earned.'
+              : 'An active support membership is required to submit monetary token redemption requests. Your existing tokens remain safely preserved in your wallet.'}
           </p>
         </div>
 
@@ -355,7 +609,7 @@ export function WalletView({ role = 'donor' }) {
             size="md"
             disabled={!isMemberActive || availableTokens < 100}
             onClick={() => setShowRedeemModal(true)}
-            className="w-full sm:w-auto justify-center"
+            className="w-full sm:w-auto justify-center shadow-sm"
           >
             <Coins className="w-4 h-4 mr-1.5" />
             <span>Redeem Tokens</span>
@@ -363,10 +617,10 @@ export function WalletView({ role = 'donor' }) {
         </div>
       </div>
 
-      {/* 4. Detailed Navigation Subtabs */}
+      {/* 4. Subtabs Card */}
       <Card className="p-5 sm:p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={() => setActiveSubTab('schedule')}
@@ -416,259 +670,359 @@ export function WalletView({ role = 'donor' }) {
               <span>Redemptions ({redemptions.length})</span>
             </button>
           </div>
-          <span className="text-[11px] text-stone-500 hidden sm:inline">
-            Consecutive Stacking Enabled
+
+          <span className="text-[11px] text-stone-500 hidden sm:inline font-medium">
+            Consecutive Stacking Active
           </span>
         </div>
 
-        {/* SUBTAB 1: MEMBERSHIP SCHEDULE & CONSECUTIVE STACKING */}
+        {/* ============================================================== */}
+        {/* SUBTAB 1: MEMBERSHIP SCHEDULE & TIMELINE                      */}
+        {/* ============================================================== */}
         {activeSubTab === 'schedule' && (
           <div className="space-y-4">
-            {/* Active and Queued Timeline Cards */}
-            {membershipPeriods.length === 0 ? (
-              <div className="py-10 text-center space-y-2 text-stone-500 text-xs">
-                <Layers className="w-8 h-8 text-stone-400 mx-auto" />
-                <p>No membership periods purchased yet.</p>
-                <p className="text-[11px] text-stone-400">
-                  Purchasing a support plan creates consecutive 30-day coverage passes.
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-bold text-stone-900">Membership Timeline & Pass Breakdown</h4>
+                <p className="text-xs text-stone-500">
+                  Each purchased pass provides 30 days of coverage. Multiple passes stack consecutively in order without overlapping.
                 </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPaymentModal(true)}
+                className="text-xs self-start sm:self-auto"
+              >
+                <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+                <span>Purchase 30-Day Pass</span>
+              </Button>
+            </div>
+
+            {evaluatedPeriods.length === 0 ? (
+              <div className="py-12 text-center space-y-3 text-stone-500 text-xs">
+                <div className="w-12 h-12 rounded-2xl bg-stone-100 flex items-center justify-center mx-auto text-stone-400">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="font-semibold text-stone-800 text-sm">No membership passes recorded yet</p>
+                  <p className="text-[11px] text-stone-500 max-w-sm mx-auto mt-1">
+                    Purchasing a Fuel Support or Corridor Help plan creates consecutive 30-day passes. Multiple purchases extend coverage consecutively.
+                  </p>
+                </div>
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={() => setShowPaymentModal(true)}
                   className="mt-2"
                 >
-                  View Membership Plans
+                  Explore Support Plans
                 </Button>
               </div>
             ) : (
-              <div className="space-y-4">
-                {/* Active Period Highlight */}
-                {activePeriod && (
-                  <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/40 space-y-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-emerald-950 text-sm">
-                            Current Active Period ({activePeriod.planName})
-                          </span>
-                          <Badge variant="active" size="sm">ACTIVE</Badge>
-                          {activePeriod.isCancelled && (
-                            <Badge variant="warning" size="sm">NON-RENEWING</Badge>
-                          )}
+              <div className="space-y-3">
+                {evaluatedPeriods.map((pass) => {
+                  const isCurrentActive = pass.computedStatus === 'active' || pass.computedStatus === 'active_cancelled';
+                  const isUpcoming = pass.computedStatus === 'upcoming';
+                  const isExpired = pass.computedStatus === 'expired';
+                  const isCancelled = pass.computedStatus === 'cancelled';
+                  const isExpanded = expandedPeriodId === (pass.id || pass.periodId);
+
+                  const paymentMethodLabel = pass.paymentMethod === 'card'
+                    ? `Card (•••• ${pass.paymentMethodDetails?.last4 || '8892'})`
+                    : pass.paymentMethod === 'upi'
+                    ? `UPI (${pass.paymentMethodDetails?.upiId || 'donor@upi'})`
+                    : pass.paymentMethod === 'net_banking'
+                    ? `Net Banking (${pass.paymentMethodDetails?.bankName || 'SBI'} ••••${pass.paymentMethodDetails?.maskedAccount?.slice(-4) || '5678'})`
+                    : 'Simulated Demo Checkout';
+
+                  return (
+                    <div
+                      key={pass.id || pass.periodId}
+                      className={`rounded-xl border transition-all ${
+                        isCurrentActive
+                          ? 'border-emerald-300 bg-emerald-50/20 shadow-sm'
+                          : isUpcoming
+                          ? 'border-blue-200 bg-blue-50/20'
+                          : isCancelled
+                          ? 'border-stone-200 bg-stone-50/40 opacity-75'
+                          : 'border-stone-200 bg-white'
+                      }`}
+                    >
+                      {/* Pass Summary Bar */}
+                      <div className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-stone-900 text-sm">
+                              {pass.planName}
+                            </span>
+
+                            {/* Badge */}
+                            {isCurrentActive ? (
+                              pass.isCancelled ? (
+                                <Badge variant="warning" size="sm">NON-RENEWING</Badge>
+                              ) : (
+                                <Badge variant="active" size="sm">ACTIVE PASS</Badge>
+                              )
+                            ) : isUpcoming ? (
+                              <Badge variant="neutral" size="sm" className="bg-blue-100 text-blue-900 border-blue-300 font-bold">
+                                QUEUE #{upcomingPeriods.findIndex((u) => u.id === pass.id) + 1}
+                              </Badge>
+                            ) : isCancelled ? (
+                              <Badge variant="danger" size="sm">CANCELLED</Badge>
+                            ) : (
+                              <Badge variant="neutral" size="sm">EXPIRED</Badge>
+                            )}
+
+                            <span className="text-xs font-mono font-bold text-stone-900">₹{pass.amount}</span>
+                            <span className="text-[11px] text-stone-400 font-mono">30-Day Duration</span>
+                          </div>
+
+                          <div className="flex items-center gap-3 text-xs text-stone-600 font-mono flex-wrap">
+                            <span>
+                              Window: <strong>{pass.sDate ? pass.sDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Pending'}</strong> →{' '}
+                              <strong>{pass.eDate ? pass.eDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Pending'}</strong>
+                            </span>
+                            {pass.pDate && (
+                              <span className="text-stone-400 hidden md:inline">
+                                Purchased: {pass.pDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-xs text-stone-600 font-mono">
-                          {activePeriod.startDate ? new Date(activePeriod.startDate).toLocaleDateString() : 'Now'} → {activePeriod.expiryDate ? new Date(activePeriod.expiryDate).toLocaleDateString() : '30 Days'}
-                        </p>
-                      </div>
 
-                      {!activePeriod.isCancelled ? (
-                        <button
-                          type="button"
-                          onClick={() => setCancellingPeriod(activePeriod)}
-                          className="text-xs font-semibold text-red-700 hover:text-red-900 underline"
-                        >
-                          Cancel Active Membership
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-amber-800 font-medium">
-                          Cancellation effective on {activePeriod.expiryDate ? new Date(activePeriod.expiryDate).toLocaleDateString() : 'expiry'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Upcoming Queued Passes */}
-                {upcomingPeriods.length > 0 && (
-                  <div className="space-y-2">
-                    <h5 className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-blue-700" />
-                      <span>Upcoming Queued Passes ({upcomingPeriods.length})</span>
-                    </h5>
-                    <p className="text-[11px] text-stone-500">
-                      These passes activate automatically on their scheduled start date. Cancelling an upcoming pass removes it and shifts later passes forward.
-                    </p>
-
-                    <div className="space-y-2">
-                      {upcomingPeriods.map((upPass, idx) => {
-                        const sDate = parseDate(upPass.startDate);
-                        const eDate = parseDate(upPass.expiryDate);
-                        return (
-                          <div
-                            key={upPass.id || upPass.periodId}
-                            className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                          >
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-stone-900">
-                                  Pass #{idx + 1}: {upPass.planName}
-                                </span>
-                                <Badge variant="neutral" size="sm" className="bg-blue-100 text-blue-800 border-blue-300">
-                                  QUEUED
-                                </Badge>
-                                <span className="text-stone-500 font-mono">₹{upPass.amount}</span>
-                              </div>
-                              <p className="text-stone-600 font-mono text-[11px]">
-                                Scheduled Window: {sDate ? sDate.toLocaleDateString() : 'Pending'} → {eDate ? eDate.toLocaleDateString() : 'Pending'}
-                              </p>
-                            </div>
-
+                        {/* Actions & Accordion Toggle */}
+                        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                          {((isCurrentActive && !pass.isCancelled) || isUpcoming) && (
                             <button
                               type="button"
-                              onClick={() => setCancellingPeriod(upPass)}
-                              className="px-2.5 py-1 rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-700 text-xs font-medium self-start sm:self-auto transition-colors"
+                              onClick={() => setCancellingPeriod(pass)}
+                              className="px-2.5 py-1 rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-700 text-xs font-medium transition-colors"
                             >
-                              Cancel Pass
+                              {isCurrentActive ? 'Cancel Active' : 'Cancel Pass'}
                             </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                          )}
 
-                {/* All Periods Table */}
-                <div className="pt-2">
-                  <h5 className="text-xs font-bold text-stone-800 uppercase tracking-wider mb-2">
-                    Complete Membership History
-                  </h5>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-surface-muted text-stone-600 font-semibold border-b border-border text-[11px]">
-                        <tr>
-                          <th className="py-2.5 px-3">Pass ID</th>
-                          <th className="py-2.5 px-3">Plan</th>
-                          <th className="py-2.5 px-3">Start Date</th>
-                          <th className="py-2.5 px-3">Expiry Date</th>
-                          <th className="py-2.5 px-3 text-right">Amount</th>
-                          <th className="py-2.5 px-3">Status</th>
-                          <th className="py-2.5 px-3 text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {membershipPeriods.map((p) => {
-                          const sDate = parseDate(p.startDate);
-                          const eDate = parseDate(p.expiryDate);
-                          const isNowActive = now >= (sDate?.getTime() || 0) && now < (eDate?.getTime() || 0) && p.status !== 'cancelled';
-                          const isNowUpcoming = (sDate?.getTime() || 0) > now && p.status !== 'cancelled';
-                          return (
-                            <tr key={p.id || p.periodId} className="hover:bg-surface-muted/50">
-                              <td className="py-2.5 px-3 font-mono font-semibold text-stone-700">
-                                {(p.periodId || p.id).slice(-8)}
-                              </td>
-                              <td className="py-2.5 px-3 font-medium text-stone-900">{p.planName}</td>
-                              <td className="py-2.5 px-3 font-mono text-stone-600">
-                                {sDate ? sDate.toLocaleDateString() : '—'}
-                              </td>
-                              <td className="py-2.5 px-3 font-mono text-stone-600">
-                                {eDate ? eDate.toLocaleDateString() : '—'}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono font-bold text-stone-900">
-                                ₹{p.amount}
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <Badge
-                                  variant={
-                                    p.status === 'cancelled'
-                                      ? 'danger'
-                                      : p.isCancelled
-                                      ? 'warning'
-                                      : isNowActive
-                                      ? 'active'
-                                      : isNowUpcoming
-                                      ? 'neutral'
-                                      : 'neutral'
-                                  }
-                                  size="sm"
-                                  className="text-[10px]"
-                                >
-                                  {p.status === 'cancelled'
-                                    ? 'CANCELLED'
-                                    : p.isCancelled
-                                    ? 'NON-RENEWING'
-                                    : isNowActive
-                                    ? 'ACTIVE'
-                                    : isNowUpcoming
-                                    ? 'UPCOMING'
-                                    : 'EXPIRED'}
-                                </Badge>
-                              </td>
-                              <td className="py-2.5 px-3 text-right">
-                                {(isNowActive && !p.isCancelled) || isNowUpcoming ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setCancellingPeriod(p)}
-                                    className="text-red-600 hover:text-red-800 text-[11px] underline"
-                                  >
-                                    Cancel
-                                  </button>
-                                ) : (
-                                  <span className="text-stone-400 text-[11px]">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedPeriodId(isExpanded ? null : (pass.id || pass.periodId))}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-100 flex items-center gap-1 transition-colors"
+                          >
+                            <span>{isExpanded ? 'Hide Details' : 'Details'}</span>
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expandable Details Tray */}
+                      {isExpanded && (
+                        <div className="px-4 pb-4 pt-2 border-t border-stone-200/60 bg-stone-50/50 rounded-b-xl text-xs space-y-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-[11px]">
+                            <div>
+                              <span className="text-stone-400 uppercase font-semibold block text-[10px]">Membership Period ID</span>
+                              <span className="font-mono text-stone-800 break-all">{pass.periodId || pass.id}</span>
+                            </div>
+                            <div>
+                              <span className="text-stone-400 uppercase font-semibold block text-[10px]">Linked Transaction ID</span>
+                              <span className="font-mono text-stone-800 break-all">{pass.transactionId || '—'}</span>
+                            </div>
+                            <div>
+                              <span className="text-stone-400 uppercase font-semibold block text-[10px]">Payment Method</span>
+                              <span className="font-mono text-stone-800">{paymentMethodLabel}</span>
+                            </div>
+                            <div>
+                              <span className="text-stone-400 uppercase font-semibold block text-[10px]">Purchase Timestamp</span>
+                              <span className="font-mono text-stone-800">
+                                {pass.pDate ? pass.pDate.toLocaleString('en-IN') : '—'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-stone-400 uppercase font-semibold block text-[10px]">Scheduled Window</span>
+                              <span className="font-mono text-stone-800">
+                                30 consecutive calendar days
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-stone-400 uppercase font-semibold block text-[10px]">Pass Status</span>
+                              <span className="font-semibold text-stone-800 uppercase">{pass.computedStatus}</span>
+                            </div>
+                          </div>
+
+                          {/* Cancellation information if applicable */}
+                          {(pass.isCancelled || pass.computedStatus === 'cancelled') && (
+                            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                              <p className="font-semibold flex items-center gap-1.5">
+                                <Info className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Cancellation Details</span>
+                              </p>
+                              {pass.computedStatus === 'active_cancelled' ? (
+                                <p>
+                                  Cancellation requested. Benefits remain fully active through{' '}
+                                  <strong>{pass.eDate ? pass.eDate.toLocaleDateString() : 'scheduled expiry'}</strong>, and will not auto-renew.
+                                </p>
+                              ) : (
+                                <p>
+                                  Pass was cancelled. Reason: {pass.cancellationReason || 'User requested cancellation'}. Subsequent queued passes were shifted forward.
+                                </p>
+                              )}
+                              <p className="text-[10px] text-amber-800">
+                                Simulated Refund: No real financial charges or real bank refunds occur in demo simulation mode.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
 
-        {/* SUBTAB 2: PAYMENT HISTORY & AUDIT TRAIL */}
+        {/* ============================================================== */}
+        {/* SUBTAB 2: PAYMENT HISTORY & AUDIT TRAIL                       */}
+        {/* ============================================================== */}
         {activeSubTab === 'contributions' && (
-          <div className="space-y-3">
-            {/* Filter Chips & KPI Summary */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-semibold text-stone-500 mr-1 flex items-center gap-1">
-                  <Filter className="w-3 h-3" /> Filter:
-                </span>
-                {[
-                  { key: 'all', label: `All (${supportTxns.length})` },
-                  { key: 'completed', label: `Completed (${completedCount})` },
-                  { key: 'failed', label: `Failed (${failedCount})` },
-                  { key: 'cancelled', label: `Cancelled (${cancelledCount})` }
-                ].map((f) => (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setTxFilter(f.key)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                      txFilter === f.key
-                        ? 'bg-stone-900 text-white'
-                        : 'bg-surface-muted text-stone-600 hover:bg-stone-200'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-
-              <span className="text-[11px] text-stone-500 font-mono">
-                Total spent: <strong className="text-stone-900">₹{totalSpent}</strong>
-              </span>
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-bold text-stone-900">Payment & Contribution Audit Trail</h4>
+              <p className="text-xs text-stone-500">
+                Complete log of all simulated payment attempts. Sensitive credentials are never stored.
+              </p>
             </div>
 
+            {/* Comprehensive Search & Filter Controls */}
+            <div className="p-3.5 rounded-xl bg-surface-muted border border-border space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-stone-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search Txn ID, Plan, Method..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-border rounded-lg text-xs text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  />
+                </div>
+
+                {/* Status Filter */}
+                <div>
+                  <select
+                    value={txFilter}
+                    onChange={(e) => setTxFilter(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-border rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  >
+                    <option value="all">All Payment Statuses</option>
+                    <option value="completed">Completed / Successful</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                {/* Purpose Filter */}
+                <div>
+                  <select
+                    value={purposeFilter}
+                    onChange={(e) => setPurposeFilter(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-border rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  >
+                    <option value="all">All Purposes (Memberships & Coffee)</option>
+                    <option value="memberships">30-Day Membership Passes Only</option>
+                    <option value="coffee">Voluntary Coffee Support (₹50)</option>
+                  </select>
+                </div>
+
+                {/* Payment Method Filter */}
+                <div>
+                  <select
+                    value={methodFilter}
+                    onChange={(e) => setMethodFilter(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-border rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  >
+                    <option value="all">All Payment Methods</option>
+                    <option value="card">Credit / Debit Card</option>
+                    <option value="upi">UPI</option>
+                    <option value="net_banking">Net Banking</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Date Presets, Sort, and Reset */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/60 text-xs">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-semibold text-stone-500 mr-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Date Range:
+                  </span>
+                  {[
+                    { key: 'all', label: 'All Time' },
+                    { key: '30', label: 'Last 30 Days' },
+                    { key: '90', label: 'Last 90 Days' }
+                  ].map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => setDatePreset(p.key)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                        datePreset === p.key
+                          ? 'bg-stone-900 text-white'
+                          : 'bg-white text-stone-600 hover:bg-stone-100 border border-border'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                    className="px-2 py-1 rounded bg-white border border-border text-[11px] text-stone-700 hover:bg-stone-50 flex items-center gap-1 font-medium"
+                  >
+                    <span>{sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}</span>
+                  </button>
+
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="px-2 py-1 rounded text-[11px] text-brand-800 hover:text-brand-950 hover:bg-brand-50 flex items-center gap-1 font-semibold transition-colors"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset Filters</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Transactions Table */}
             <div className="overflow-x-auto">
               {filteredTxns.length === 0 ? (
-                <div className="py-8 text-center text-xs text-stone-500">
-                  No {txFilter !== 'all' ? txFilter : ''} payment transactions found.
+                <div className="py-12 text-center text-xs text-stone-500 space-y-2">
+                  <History className="w-8 h-8 text-stone-300 mx-auto" />
+                  <p className="font-semibold text-stone-700">No payment transactions found</p>
+                  <p className="text-[11px] text-stone-400">
+                    {hasActiveFilters ? 'No transactions match the selected filters.' : 'Completed payments and attempts will appear here.'}
+                  </p>
+                  {hasActiveFilters && (
+                    <Button variant="outline" size="sm" onClick={resetFilters} className="mt-2 text-xs">
+                      Reset All Filters
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <table className="w-full text-xs text-left">
                   <thead className="bg-surface-muted text-stone-600 text-[11px] font-semibold border-b border-border">
                     <tr>
                       <th className="py-2.5 px-3">Transaction ID</th>
-                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Date & Time</th>
                       <th className="py-2.5 px-3">Plan / Purpose</th>
                       <th className="py-2.5 px-3">Method</th>
                       <th className="py-2.5 px-3 text-right">Amount</th>
-                      <th className="py-2.5 px-3">Coverage Window</th>
+                      <th className="py-2.5 px-3">Period / Coverage</th>
                       <th className="py-2.5 px-3">Status</th>
                     </tr>
                   </thead>
@@ -677,6 +1031,9 @@ export function WalletView({ role = 'donor' }) {
                       const dateStr = tx.timestampMs
                         ? new Date(tx.timestampMs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
                         : '—';
+                      const timeStr = tx.timestampMs
+                        ? new Date(tx.timestampMs).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                        : '';
 
                       const methodLabel = tx.paymentMethod === 'card'
                         ? `Card (•••• ${tx.paymentMethodDetails?.last4 || '8892'})`
@@ -688,25 +1045,30 @@ export function WalletView({ role = 'donor' }) {
 
                       const status = tx.paymentStatus || 'completed';
 
-                      const coverageWindow = tx.membershipStartDate && tx.membershipExpiryDate
-                        ? `${new Date(tx.membershipStartDate).toLocaleDateString()} → ${new Date(tx.membershipExpiryDate).toLocaleDateString()}`
-                        : tx.activatesMembership
-                        ? '30 Days Pass'
-                        : 'Voluntary Coffee (No Membership)';
+                      const isCoffee = !tx.activatesMembership || tx.planId === 'coffee';
 
                       return (
-                        <tr key={tx.id || tx.transactionId} className="hover:bg-surface-muted/50">
+                        <tr key={tx.id || tx.transactionId} className="hover:bg-surface-muted/50 transition-colors">
                           <td className="py-2.5 px-3 font-mono font-semibold text-stone-800 whitespace-nowrap">
                             {tx.transactionId || tx.id}
                           </td>
-                          <td className="py-2.5 px-3 font-mono text-stone-500 whitespace-nowrap">{dateStr}</td>
+                          <td className="py-2.5 px-3 font-mono text-stone-500 whitespace-nowrap">
+                            <div>{dateStr}</div>
+                            {timeStr && <div className="text-[10px] text-stone-400">{timeStr}</div>}
+                          </td>
                           <td className="py-2.5 px-3 font-medium text-stone-900">
-                            {tx.planName}
-                            {tx.planId === 'coffee' && (
-                              <span className="ml-1 text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                Coffee
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span>{tx.planName}</span>
+                              {isCoffee ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                  <Coffee className="w-2.5 h-2.5" /> Coffee
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  30-Day Pass
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2.5 px-3 text-stone-600 font-mono text-[11px] whitespace-nowrap">
                             {methodLabel}
@@ -715,7 +1077,23 @@ export function WalletView({ role = 'donor' }) {
                             ₹{tx.amount}
                           </td>
                           <td className="py-2.5 px-3 text-stone-600 font-mono text-[11px]">
-                            {coverageWindow}
+                            {tx.periodId ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveSubTab('schedule');
+                                  setExpandedPeriodId(tx.periodId);
+                                }}
+                                className="text-brand-700 hover:text-brand-900 underline flex items-center gap-1 font-mono text-[10px]"
+                                title="Click to view in Schedule"
+                              >
+                                <span>{tx.periodId.slice(-10)}</span>
+                              </button>
+                            ) : isCoffee ? (
+                              <span className="text-stone-400 text-[10px]">Voluntary (No Pass)</span>
+                            ) : (
+                              <span className="text-stone-400 text-[10px]">—</span>
+                            )}
                           </td>
                           <td className="py-2.5 px-3">
                             <Badge
@@ -732,7 +1110,7 @@ export function WalletView({ role = 'donor' }) {
                               {status.toUpperCase()}
                             </Badge>
                             {tx.failureReason && (
-                              <span className="block text-[10px] text-red-600 mt-0.5 max-w-[140px] truncate" title={tx.failureReason}>
+                              <span className="block text-[10px] text-red-600 mt-0.5 max-w-[150px] truncate" title={tx.failureReason}>
                                 {tx.failureReason}
                               </span>
                             )}
@@ -747,128 +1125,156 @@ export function WalletView({ role = 'donor' }) {
           </div>
         )}
 
-        {/* SUBTAB 3: REWARD LEDGER BATCHES */}
+        {/* ============================================================== */}
+        {/* SUBTAB 3: REWARD LEDGER BATCHES (FIFO)                        */}
+        {/* ============================================================== */}
         {activeSubTab === 'batches' && (
-          <div className="overflow-x-auto">
-            {batches.length === 0 ? (
-              <div className="py-8 text-center text-xs text-stone-500">
-                No reward tokens recorded yet. Complete verified food donation handovers to earn tokens.
-              </div>
-            ) : (
-              <table className="w-full text-xs text-left">
-                <thead className="bg-surface-muted text-stone-600 text-[11px] font-semibold border-b border-border">
-                  <tr>
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Donation / Event</th>
-                    <th className="py-2.5 px-3">Plan at Earning</th>
-                    <th className="py-2.5 px-3">Rate</th>
-                    <th className="py-2.5 px-3 text-right">Earned</th>
-                    <th className="py-2.5 px-3 text-right">Remaining</th>
-                    <th className="py-2.5 px-3 text-right">Est. Value</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {batches.map((b) => {
-                    const dateStr = b.timestampMs
-                      ? new Date(b.timestampMs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-                      : '—';
-                    const value = Math.round((b.remainingTokens || 0) * (b.redemptionRate || 0) * 100) / 100;
-                    return (
-                      <tr key={b.id || b.batchId} className="hover:bg-surface-muted/50">
-                        <td className="py-2.5 px-3 font-mono text-stone-500 whitespace-nowrap">{dateStr}</td>
-                        <td className="py-2.5 px-3 font-medium text-stone-900 max-w-[180px] truncate">
-                          {b.donationTitle || b.donationId || 'Food Handover'}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <Badge variant="outline" size="sm" className="text-[10px]">
-                            {b.planNameAtEarning || b.planAtEarning}
-                          </Badge>
-                        </td>
-                        <td className="py-2.5 px-3 text-stone-600 font-mono">
-                          ₹{b.redemptionRatePer100 || (b.redemptionRate * 100)}/100
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-semibold text-stone-800">
-                          {b.tokensEarned}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800">
-                          {b.remainingTokens}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-brand-900">
-                          ₹{value}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm font-bold text-stone-900">FIFO Reward Ledger</h4>
+              <p className="text-xs text-stone-500">
+                Detailed record of reward tokens earned from completed food rescues, valued according to the plan under which each batch was earned.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              {batches.length === 0 ? (
+                <div className="py-10 text-center text-xs text-stone-500 space-y-1">
+                  <Coins className="w-8 h-8 text-stone-300 mx-auto" />
+                  <p className="font-semibold text-stone-700">No reward tokens recorded yet</p>
+                  <p className="text-[11px] text-stone-400">Complete verified food donation handovers to earn tokens.</p>
+                </div>
+              ) : (
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-surface-muted text-stone-600 text-[11px] font-semibold border-b border-border">
+                    <tr>
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Donation / Event</th>
+                      <th className="py-2.5 px-3">Plan at Earning</th>
+                      <th className="py-2.5 px-3">Rate</th>
+                      <th className="py-2.5 px-3 text-right">Earned</th>
+                      <th className="py-2.5 px-3 text-right">Remaining</th>
+                      <th className="py-2.5 px-3 text-right">Est. Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {batches.map((b) => {
+                      const dateStr = b.timestampMs
+                        ? new Date(b.timestampMs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                        : '—';
+                      const value = Math.round((b.remainingTokens || 0) * (b.redemptionRate || 0) * 100) / 100;
+                      return (
+                        <tr key={b.id || b.batchId} className="hover:bg-surface-muted/50">
+                          <td className="py-2.5 px-3 font-mono text-stone-500 whitespace-nowrap">{dateStr}</td>
+                          <td className="py-2.5 px-3 font-medium text-stone-900 max-w-[180px] truncate">
+                            {b.donationTitle || b.donationId || 'Food Handover'}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <Badge variant="outline" size="sm" className="text-[10px]">
+                              {b.planNameAtEarning || b.planAtEarning}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-3 text-stone-600 font-mono">
+                            ₹{b.redemptionRatePer100 || (b.redemptionRate * 100)}/100
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-stone-800">
+                            {b.tokensEarned}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800">
+                            {b.remainingTokens}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-brand-900">
+                            ₹{value}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
 
-        {/* SUBTAB 4: REDEMPTION REQUESTS */}
+        {/* ============================================================== */}
+        {/* SUBTAB 4: REDEMPTION REQUESTS                                 */}
+        {/* ============================================================== */}
         {activeSubTab === 'redemptions' && (
-          <div className="overflow-x-auto">
-            {redemptions.length === 0 ? (
-              <div className="py-8 text-center text-xs text-stone-500">
-                No token redemptions requested yet.
-              </div>
-            ) : (
-              <table className="w-full text-xs text-left">
-                <thead className="bg-surface-muted text-stone-600 text-[11px] font-semibold border-b border-border">
-                  <tr>
-                    <th className="py-2.5 px-3">Request ID</th>
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Tokens</th>
-                    <th className="py-2.5 px-3">Amount</th>
-                    <th className="py-2.5 px-3">UPI ID</th>
-                    <th className="py-2.5 px-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {redemptions.map((r) => {
-                    const dateStr = r.timestampMs
-                      ? new Date(r.timestampMs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-                      : '—';
-                    return (
-                      <tr key={r.id || r.requestId} className="hover:bg-surface-muted/50">
-                        <td className="py-2.5 px-3 font-mono font-semibold text-stone-800">{r.requestId || r.id}</td>
-                        <td className="py-2.5 px-3 font-mono text-stone-500">{dateStr}</td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-stone-900">{r.requestedTokens}</td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-emerald-800">₹{r.calculatedAmount}</td>
-                        <td className="py-2.5 px-3 font-mono text-stone-600">{r.upiId}</td>
-                        <td className="py-2.5 px-3">
-                          <Badge
-                            variant={
-                              r.status === 'paid'
-                                ? 'active'
-                                : r.status === 'approved'
-                                ? 'active'
-                                : r.status === 'rejected'
-                                ? 'danger'
-                                : 'warning'
-                            }
-                            size="sm"
-                            className="text-[10px]"
-                          >
-                            {(r.status || 'PENDING').toUpperCase()}
-                          </Badge>
-                          {r.rejectionReason && (
-                            <span className="block text-[10px] text-red-600 mt-0.5 max-w-[150px] truncate">
-                              {r.rejectionReason}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm font-bold text-stone-900">Token Redemptions</h4>
+              <p className="text-xs text-stone-500">
+                History of token cashout requests. Admin verification takes 24–48 hours for UPI payouts.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              {redemptions.length === 0 ? (
+                <div className="py-10 text-center text-xs text-stone-500 space-y-1">
+                  <ArrowUpRight className="w-8 h-8 text-stone-300 mx-auto" />
+                  <p className="font-semibold text-stone-700">No token redemptions requested yet</p>
+                  <p className="text-[11px] text-stone-400">Redeem available tokens in multiples of 100.</p>
+                </div>
+              ) : (
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-surface-muted text-stone-600 text-[11px] font-semibold border-b border-border">
+                    <tr>
+                      <th className="py-2.5 px-3">Request ID</th>
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Tokens</th>
+                      <th className="py-2.5 px-3">Amount</th>
+                      <th className="py-2.5 px-3">UPI ID</th>
+                      <th className="py-2.5 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {redemptions.map((r) => {
+                      const dateStr = r.timestampMs
+                        ? new Date(r.timestampMs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                        : '—';
+                      return (
+                        <tr key={r.id || r.requestId} className="hover:bg-surface-muted/50">
+                          <td className="py-2.5 px-3 font-mono font-semibold text-stone-800">{r.requestId || r.id}</td>
+                          <td className="py-2.5 px-3 font-mono text-stone-500">{dateStr}</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-stone-900">{r.requestedTokens}</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-emerald-800">₹{r.calculatedAmount}</td>
+                          <td className="py-2.5 px-3 font-mono text-stone-600">{r.upiId}</td>
+                          <td className="py-2.5 px-3">
+                            <Badge
+                              variant={
+                                r.status === 'paid'
+                                  ? 'active'
+                                  : r.status === 'approved'
+                                  ? 'active'
+                                  : r.status === 'rejected'
+                                  ? 'danger'
+                                  : 'warning'
+                              }
+                              size="sm"
+                              className="text-[10px]"
+                            >
+                              {(r.status || 'PENDING').toUpperCase()}
+                            </Badge>
+                            {r.rejectionReason && (
+                              <span className="block text-[10px] text-red-600 mt-0.5 max-w-[150px] truncate" title={r.rejectionReason}>
+                                {r.rejectionReason}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
       </Card>
 
-      {/* Cancellation Confirmation Modal */}
+      {/* ============================================================== */}
+      {/* CANCELLATION CONFIRMATION MODAL                                */}
+      {/* ============================================================== */}
       {cancellingPeriod && (
         <div
           role="dialog"
@@ -888,19 +1294,27 @@ export function WalletView({ role = 'donor' }) {
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-700 space-y-2">
+            <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-700 space-y-2">
               {cancellingPeriod.id === activePeriod?.id ? (
-                <p>
-                  <strong>Active Pass Policy:</strong> Cancelling your active membership marks it as non-renewing.
-                  Your benefits (token earning and redemptions) remain <strong>100% active</strong> until the scheduled expiry on{' '}
-                  <strong>{activePeriod.expiryDate ? new Date(activePeriod.expiryDate).toLocaleDateString() : 'scheduled date'}</strong>.
-                </p>
+                <div>
+                  <p className="font-semibold text-stone-900 mb-1">Active Pass Cancellation Policy:</p>
+                  <p className="leading-relaxed">
+                    Cancelling your active membership marks it as <strong>non-renewing</strong>. Your member benefits (token earning and redemptions) remain <strong>100% active</strong> until the scheduled end of your current cycle on{' '}
+                    <strong>{activePeriod.eDate ? activePeriod.eDate.toLocaleDateString() : 'scheduled date'}</strong>.
+                  </p>
+                </div>
               ) : (
-                <p>
-                  <strong>Upcoming Pass Policy:</strong> Cancelling this queued pass removes it from your future schedule.
-                  Any subsequent queued passes will automatically <strong>shift forward by 30 days</strong> to maintain uninterrupted coverage.
-                </p>
+                <div>
+                  <p className="font-semibold text-stone-900 mb-1">Upcoming Queued Pass Cancellation Policy:</p>
+                  <p className="leading-relaxed">
+                    Cancelling this queued pass removes it from your future schedule. Any subsequent queued passes will automatically <strong>shift forward by 30 days</strong> to maintain uninterrupted consecutive coverage.
+                  </p>
+                </div>
               )}
+
+              <div className="p-2 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-medium">
+                Simulation Notice: FoodBridge operates on demo simulation mode. No real bank debits occurred and no real monetary refunds will be issued.
+              </div>
             </div>
 
             <div>
